@@ -424,24 +424,31 @@ class QmakeParser:
 
         return Grammar
 
-    def parseFile(self, file: str) -> Tuple[pp.ParseResults, str]:
-        print(f'Parsing "{file}"...')
+    def parseFileContents(self, contents: str) -> Tuple[pp.ParseResults, str]:
         try:
-            with open(file, "r") as file_fd:
-                contents = file_fd.read()
-
-            # old_contents = contents
             contents = fixup_comments(contents)
             contents = fixup_linecontinuation(contents)
             result = self._Grammar.parseString(contents, parseAll=True)
         except pp.ParseException as pe:
             print(pe.line)
-            print(f"{' ' * (pe.col-1)}^")
+            print(f"{' ' * (pe.col - 1)}^")
             print(pe)
             raise pe
+        return result, contents
+
+    def parseFile(self, file: str) -> Tuple[pp.ParseResults, str]:
+        print(f'Parsing "{file}"...')
+        with open(file, "r") as file_fd:
+            contents = file_fd.read()
+            result, contents = self.parseFileContents(contents)
         return result, contents
 
 
 def parseProFile(file: str, *, debug=False) -> Tuple[pp.ParseResults, str]:
     parser = QmakeParser(debug=debug)
     return parser.parseFile(file)
+
+
+def parseProFileContents(contents: str, *, debug=False) -> Tuple[pp.ParseResults, str]:
+    parser = QmakeParser(debug=debug)
+    return parser.parseFileContents(contents)

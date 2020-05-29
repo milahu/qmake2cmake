@@ -31,11 +31,13 @@ import glob
 import os
 import subprocess
 import concurrent.futures
+import collections
 import sys
 import typing
 import argparse
+import qmake_parser
 from argparse import ArgumentParser
-
+from pro2cmake import do_include, Scope
 
 def parse_command_line() -> argparse.Namespace:
     parser = ArgumentParser(
@@ -66,6 +68,13 @@ def parse_command_line() -> argparse.Namespace:
         dest="skip_subdirs_projects",
         action="store_true",
         help="Don't run pro2cmake on TEMPLATE=subdirs projects.",
+    )
+    parser.add_argument(
+        "--skip-smarty-directory-filtering",
+        dest="skip_smart_directory_filtering",
+        action="store_true",
+        help="Don't run pro2cmake on a pro file which is included in a subdir project in the same "
+             "directory.",
     )
     parser.add_argument(
         "--is-example",
@@ -157,6 +166,58 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
     if filter_func:
         print("Filtering.")
         filter_result = [p for p in filter_result if filter_func(p)]
+
+    def read_file_contents(file_path):
+        with open(file_path, "r") as file_fd:
+            contents = file_fd.read()
+        return contents
+
+    def is_subdirs_project(file_path):
+        file_contents = read_file_contents(file_path)
+        parse_result, massaged_file_contents = qmake_parser.parseProFileContents(file_contents)
+        file_scope = Scope.FromDict(
+            None,
+            file_path,
+            parse_result.asDict().get("statements"),
+            project_file_content=massaged_file_contents,
+        )
+        do_include(file_scope)
+        return file_scope.get_string("TEMPLATE") == "subdirs"
+
+    def filter_non_subdirs_pro_files_in_same_dir(pro_files):
+        result = []
+        pro_files_by_dir = collections.defaultdict(list)
+        for f in pro_files:
+            dir_path = os.path.dirname(f)
+            pro_files_by_dir[dir_path].append(f)
+
+        for one_dir, dir_files in pro_files_by_dir.items():
+            if len(dir_files) <= 1:
+                result += dir_files
+                continue
+            print(f"Multiple .pro files found in {one_dir}")
+            subdirs_projects = set(filter(is_subdirs_project, dir_files))
+            skipped_projects = []
+            if len(subdirs_projects) == 0 or len(subdirs_projects) > 1:
+                p = dir_files[0]
+                result.append(p)
+                skipped_projects = dir_files[:1]
+                if len(subdirs_projects) == 0:
+                    print(f"  No SUBDIRS project found.")
+                else:
+                    print(f"  Multiple SUBDIRS projects found")
+                print(f"  Selecting the first .pro file {p}")
+            if len(subdirs_projects) == 1:
+                p = subdirs_projects.pop()
+                print(f"  SUBDIRS project selected for conversion: {p}")
+                result.append(p)
+                skipped_projects = list(set(dir_files) - {p})
+            for p in skipped_projects:
+                print(f"  Skipping: {p}")
+        return result
+
+    if not args.skip_smart_directory_filtering:
+        filter_result = filter_non_subdirs_pro_files_in_same_dir(filter_result)
 
     for pro_file in sorted(filter_result, key=sorter):
         dir_name = os.path.dirname(pro_file)
