@@ -1873,7 +1873,6 @@ def handle_subdir(
         *,
         indent: int = 0,
         current_conditions: FrozenSet[str] = frozenset(),
-        is_example: bool = False,
     ):
         for sd in scope.get_files("SUBDIRS"):
             # Collect info about conditions and SUBDIR assignments in the
@@ -1922,13 +1921,7 @@ def handle_subdir(
             if child_condition:
                 child_conditions = frozenset((*child_conditions, child_condition))
 
-            handle_subdir_helper(
-                c,
-                cm_fh,
-                indent=indent + 1,
-                current_conditions=child_conditions,
-                is_example=is_example,
-            )
+            handle_subdir_helper(c, cm_fh, indent=indent + 1, current_conditions=child_conditions)
 
     def group_and_print_sub_dirs(scope: Scope, indent: int = 0) -> None:
         # Simplify conditions, and group
@@ -2010,9 +2003,7 @@ def handle_subdir(
     recursive_evaluate_scope(scope)
 
     # Do the work.
-    handle_subdir_helper(
-        scope, cm_fh, indent=indent, current_conditions=current_conditions, is_example=is_example
-    )
+    handle_subdir_helper(scope, cm_fh, indent=indent, current_conditions=current_conditions)
 
     # Make sure to exclude targets within subdirectories first.
     qt_no_make_tools = scope.get("_QT_NO_MAKE_TOOLS")
