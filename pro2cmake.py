@@ -1843,7 +1843,15 @@ def handle_subdir(
     indent: int = 0,
     is_example: bool = False,
     is_user_project: bool = False,
+    is_sub_project: bool = False,
+    out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
+
+    # Library dependencies of the whole SUBDIRS hierarchy.
+    in_recursion: bool = True
+    if out_library_dependencies is None:
+        out_library_dependencies = LibraryDependencies([], [])
+        in_recursion = False
 
     # Global nested dictionary that will contain sub_dir assignments and their conditions.
     # Declared as a global in order not to pollute the nested function signatures with giant
@@ -1912,6 +1920,8 @@ def handle_subdir(
                         indent=indent,
                         is_example=is_example,
                         is_user_project=is_user_project,
+                        is_sub_project=True,
+                        out_library_dependencies=out_library_dependencies,
                     )
             else:
                 print(f"    XXXX: SUBDIR {sd} in {scope}: Not found.")
@@ -2008,8 +2018,28 @@ def handle_subdir(
     # have 'else' as a condition.
     recursive_evaluate_scope(scope)
 
-    # Do the work.
-    handle_subdir_helper(scope, cm_fh, indent=indent, current_conditions=current_conditions)
+    # Traverse the SUBDIRS hierarchy.  Collect out_library_dependencies.
+    # Generate add_subdirectory() calls.
+    io_string = io.StringIO()
+    handle_subdir_helper(scope, io_string, indent=indent, current_conditions=current_conditions)
+
+    # Write the top-level project() prelude, including find_package() calls.
+    if not in_recursion and is_user_project:
+        project_name = scope.TARGET
+        if not project_name:
+            project_name = os.path.splitext(os.path.basename(scope.file))[0]
+
+        write_example_top_level_prelude(
+            cm_fh,
+            scope,
+            project_name,
+            out_library_dependencies,
+            indent=indent,
+            is_user_project=is_user_project,
+        )
+
+    # Write add_subdirectory() calls.
+    cm_fh.write(io_string.getvalue())
 
     # Make sure to exclude targets within subdirectories first.
     qt_no_make_tools = scope.get("_QT_NO_MAKE_TOOLS")
@@ -3929,19 +3959,25 @@ def find_qml_resource(resources: List[QtResource]):
     return next(filter(looks_like_qml_resource, resources), None)
 
 
-def write_example(
+def write_example_top_level_prelude(
     cm_fh: IO[str],
     scope: Scope,
-    gui: bool = False,
+    project_name: str,
+    library_dependencies: LibraryDependencies,
     *,
     indent: int = 0,
-    is_plugin: bool = False,
     is_user_project: bool = False,
-) -> str:
-    binary_name = scope.TARGET
-    assert binary_name
-    config = scope.get("CONFIG")
-    is_qml_plugin = ("qml" in scope.get("QT")) or "qmltypes" in config
+) -> None:
+    project_version = scope.get_string("VERSION", "1.0")
+    cm_fh.write(
+        f"cmake_minimum_required(VERSION {cmake_version_string})\n"
+        f"project({project_name} VERSION {project_version} LANGUAGES CXX)\n\n"
+        "set(CMAKE_INCLUDE_CURRENT_DIR ON)\n\n"
+        "set(CMAKE_AUTOMOC ON)\n"
+    )
+    if scope.get_files("FORMS"):
+        cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
+    cm_fh.write("\n")
 
     if not is_user_project:
         example_install_dir = scope.expandString("target.path")
@@ -3950,24 +3986,31 @@ def write_example(
         example_install_dir = example_install_dir.replace(
             "$$[QT_INSTALL_EXAMPLES]", "${INSTALL_EXAMPLESDIR}"
         )
-
-    project_version = scope.get_string("VERSION", "1.0")
-    cm_fh.write(
-        f"cmake_minimum_required(VERSION {cmake_version_string})\n"
-        f"project({binary_name} VERSION {project_version} LANGUAGES CXX)\n\n"
-        "set(CMAKE_INCLUDE_CURRENT_DIR ON)\n\n"
-        "set(CMAKE_AUTOMOC ON)\n"
-    )
-    if scope.get_files("FORMS"):
-        cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
-    cm_fh.write("\n")
-    if not is_user_project:
         cm_fh.write(
             "if(NOT DEFINED INSTALL_EXAMPLESDIR)\n"
             '    set(INSTALL_EXAMPLESDIR "examples")\n'
             "endif()\n\n"
             f'set(INSTALL_EXAMPLEDIR "{example_install_dir}")\n\n'
         )
+
+    write_top_level_find_package_section(cm_fh, library_dependencies, indent=indent)
+
+
+def write_example(
+    cm_fh: IO[str],
+    scope: Scope,
+    gui: bool = False,
+    *,
+    indent: int = 0,
+    is_plugin: bool = False,
+    is_user_project: bool = False,
+    is_sub_project: bool = False,
+    out_library_dependencies: Optional[LibraryDependencies] = None,
+) -> str:
+    binary_name = scope.TARGET
+    assert binary_name
+    config = scope.get("CONFIG")
+    is_qml_plugin = ("qml" in scope.get("QT")) or "qmltypes" in config
 
     recursive_evaluate_scope(scope)
 
@@ -3995,7 +4038,14 @@ def write_example(
         libdeps.optional_libs += public_libs
         libdeps.optional_libs += private_libs
 
-    write_top_level_find_package_section(cm_fh, libdeps, indent=indent)
+    if not (is_user_project and is_sub_project):
+        write_example_top_level_prelude(
+            cm_fh, scope, binary_name, libdeps, indent=indent, is_user_project=is_user_project
+        )
+
+    if out_library_dependencies is not None:
+        out_library_dependencies.required_libs += libdeps.required_libs
+        out_library_dependencies.optional_libs += libdeps.optional_libs
 
     cm_fh.write("\n")
 
@@ -4539,6 +4589,8 @@ def handle_app_or_lib(
     indent: int = 0,
     is_example: bool = False,
     is_user_project=False,
+    is_sub_project=False,
+    out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
     assert scope.TEMPLATE in ("app", "lib")
 
@@ -4561,7 +4613,14 @@ def handle_app_or_lib(
         target = write_3rdparty_library(cm_fh, scope, indent=indent)
     elif is_example:
         target = write_example(
-            cm_fh, scope, gui, indent=indent, is_plugin=is_plugin, is_user_project=is_user_project
+            cm_fh,
+            scope,
+            gui,
+            indent=indent,
+            is_plugin=is_plugin,
+            is_user_project=is_user_project,
+            is_sub_project=is_sub_project,
+            out_library_dependencies=out_library_dependencies,
         )
     elif is_qt_plugin:
         assert not is_example
@@ -4847,14 +4906,32 @@ def cmakeify_scope(
     indent: int = 0,
     is_example: bool = False,
     is_user_project: bool = False,
+    is_sub_project: bool = False,
+    out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
     template = scope.TEMPLATE
 
     if is_user_project:
         if template == "subdirs":
-            handle_subdir(scope, cm_fh, indent=indent, is_example=True, is_user_project=True)
+            handle_subdir(
+                scope,
+                cm_fh,
+                indent=indent,
+                is_example=True,
+                is_user_project=True,
+                is_sub_project=is_sub_project,
+                out_library_dependencies=out_library_dependencies,
+            )
         elif template in ("app", "lib"):
-            handle_app_or_lib(scope, cm_fh, indent=indent, is_example=True, is_user_project=True)
+            handle_app_or_lib(
+                scope,
+                cm_fh,
+                indent=indent,
+                is_example=True,
+                is_user_project=True,
+                is_sub_project=is_sub_project,
+                out_library_dependencies=out_library_dependencies,
+            )
     else:
         temp_buffer = io.StringIO()
 
