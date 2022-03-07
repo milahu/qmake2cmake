@@ -3761,8 +3761,7 @@ def write_binary(cm_fh: IO[str], scope: Scope, gui: bool = False, *, indent: int
 
 def write_find_package_section(
     cm_fh: IO[str],
-    public_libs: List[str],
-    private_libs: List[str],
+    libs: List[str],
     *,
     indent: int = 0,
     is_required: bool = True,
@@ -3770,9 +3769,8 @@ def write_find_package_section(
     qt_package_name: str = "Qt6",
 ):
     packages = []  # type: List[LibraryMapping]
-    all_libs = public_libs + private_libs
 
-    for one_lib in all_libs:
+    for one_lib in libs:
         info = find_library_info_for_target(one_lib)
         if info and info not in packages:
             packages.append(info)
@@ -3956,8 +3954,7 @@ def write_example(
     (public_libs, private_libs) = extract_cmake_libraries(scope, is_example=True)
     write_find_package_section(
         cm_fh,
-        public_libs,
-        private_libs,
+        public_libs + private_libs,
         indent=indent,
         end_with_extra_newline=False,
         qt_package_name="Qt${QT_VERSION_MAJOR}",
@@ -3965,20 +3962,18 @@ def write_example(
 
     # Write find_package calls for optional packages.
     # We consider packages inside scopes other than the top-level one as optional.
-    optional_public_libs: List[str] = []
-    optional_private_libs: List[str] = []
+    optional_libs: List[str] = []
     handling_first_scope = True
     for inner_scope in scopes:
         if handling_first_scope:
             handling_first_scope = False
             continue
         (public_libs, private_libs) = extract_cmake_libraries(inner_scope, is_example=True)
-        optional_public_libs += public_libs
-        optional_private_libs += private_libs
+        optional_libs += public_libs
+        optional_libs += private_libs
     write_find_package_section(
         cm_fh,
-        optional_public_libs,
-        optional_private_libs,
+        optional_libs,
         indent=indent,
         is_required=False,
         end_with_extra_newline=False,
