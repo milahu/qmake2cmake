@@ -484,6 +484,12 @@ def get_cmake_api_call(api_name: str, api_version: Optional[int] = None) -> str:
     return cmake_api_calls[api_version][api_name]
 
 
+class LibraryDependencies:
+    def __init__(self, required_libs: List[str], optional_libs: List[str]) -> None:
+        self.required_libs = required_libs
+        self.optional_libs = optional_libs
+
+
 class QtResource:
     def __init__(
         self,
@@ -3803,6 +3809,35 @@ def write_find_package_section(
         cm_fh.write("\n")
 
 
+def write_top_level_find_package_section(
+    cm_fh: IO[str],
+    dependencies: LibraryDependencies,
+    *,
+    indent: int = 0,
+):
+    # Write find_package call for Qt5/Qt6 and make it available as package QT.
+    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)\n")
+
+    # Write find_package calls for required packages.
+    write_find_package_section(
+        cm_fh,
+        dependencies.required_libs,
+        indent=indent,
+        end_with_extra_newline=False,
+        qt_package_name="Qt${QT_VERSION_MAJOR}",
+    )
+
+    # Write find_package calls for optional packages.
+    write_find_package_section(
+        cm_fh,
+        dependencies.optional_libs,
+        indent=indent,
+        is_required=False,
+        end_with_extra_newline=False,
+        qt_package_name="Qt${QT_VERSION_MAJOR}",
+    )
+
+
 def write_jar(cm_fh: IO[str], scope: Scope, *, indent: int = 0) -> str:
 
     target = scope.TARGET
@@ -3946,39 +3981,21 @@ def write_example(
     handle_source_subtractions(scopes)
     scopes = merge_scopes(scopes)
 
-    # Write find_package call for Qt5/Qt6 and make it available as package QT.
-    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)\n")
-
-    # Write find_package calls for required packages.
     # We consider packages as required if they appear at the top-level scope.
     (public_libs, private_libs) = extract_cmake_libraries(scope, is_example=True)
-    write_find_package_section(
-        cm_fh,
-        public_libs + private_libs,
-        indent=indent,
-        end_with_extra_newline=False,
-        qt_package_name="Qt${QT_VERSION_MAJOR}",
-    )
+    libdeps: LibraryDependencies = LibraryDependencies(public_libs + private_libs, [])
 
-    # Write find_package calls for optional packages.
     # We consider packages inside scopes other than the top-level one as optional.
-    optional_libs: List[str] = []
     handling_first_scope = True
     for inner_scope in scopes:
         if handling_first_scope:
             handling_first_scope = False
             continue
         (public_libs, private_libs) = extract_cmake_libraries(inner_scope, is_example=True)
-        optional_libs += public_libs
-        optional_libs += private_libs
-    write_find_package_section(
-        cm_fh,
-        optional_libs,
-        indent=indent,
-        is_required=False,
-        end_with_extra_newline=False,
-        qt_package_name="Qt${QT_VERSION_MAJOR}",
-    )
+        libdeps.optional_libs += public_libs
+        libdeps.optional_libs += private_libs
+
+    write_top_level_find_package_section(cm_fh, libdeps, indent=indent)
 
     cm_fh.write("\n")
 
