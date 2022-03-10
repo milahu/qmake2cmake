@@ -1,6 +1,7 @@
-# CMake Utils
+# qmake2cmake
 
-This directory holds scripts to help the porting process from `qmake` to `cmake` for Qt6.
+This repository contains Python scripts to convert QMake projects to
+CMake projects.
 
 # Requirements
 
@@ -32,6 +33,20 @@ If the `pip install` command above doesn't work, try:
 
 ```
 python3.7 -m pip install -r requirements.txt
+```
+
+# Usage
+
+The following call converts a single QMake project to CMake:
+```
+qmake2cmake ~/projects/myapp/myapp.pro
+```
+
+By default, a `CMakeLists.txt` is placed next to the `.pro` file.
+
+To generate `CMakeLists.txt` in a different location, use the `-o` option:
+```
+qmake2cmake ~/projects/myapp/myapp.pro -o ~/projects/myapp-converted/CMakeLists.txt
 ```
 
 # Contributing to the scripts
