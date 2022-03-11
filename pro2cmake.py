@@ -1889,6 +1889,14 @@ def handle_subdir(
         current_conditions: FrozenSet[str] = frozenset(),
     ):
         for sd in scope.get_files("SUBDIRS"):
+            # Handle .file and .subdir modifiers
+            sd_file = scope.get_string(sd + ".file")
+            sd_subdir = scope.get_string(sd + ".subdir")
+            if sd_file:
+                sd = sd_file
+            elif sd_subdir:
+                sd = sd_subdir
+
             # Collect info about conditions and SUBDIR assignments in the
             # current scope.
             if os.path.isdir(sd) or sd.startswith("-"):

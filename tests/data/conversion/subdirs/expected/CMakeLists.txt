@@ -16,3 +16,6 @@ qt_add_executable(app WIN32 MACOSX_BUNDLE
 target_link_libraries(app PUBLIC
     Qt::OpenGL
 )
+add_subdirectory(lib1)
+add_subdirectory(lib2)
+add_subdirectory(lib3)
