@@ -30,6 +30,8 @@
 from pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
 from tempfile import TemporaryDirectory
 
+import filecmp
+import functools
 import os
 import pathlib
 import pytest
@@ -37,7 +39,8 @@ import re
 import shutil
 import subprocess
 import tempfile
-import typing
+
+from typing import Callable, Optional
 
 debug_mode = bool(os.environ.get("DEBUG_QMAKE2CMAKE_TEST_CONVERSION"))
 test_script_dir = pathlib.Path(__file__).parent.resolve()
@@ -46,7 +49,17 @@ qmake2cmake = qmake2cmake_dir.joinpath("qmake2cmake")
 test_data_dir = test_script_dir.joinpath("data", "conversion")
 
 
-def convert(base_name: str):
+def compare_expected_output_directories(actual: str, expected: str):
+    dc = filecmp.dircmp(actual, expected)
+    assert(dc.diff_files == [])
+
+
+def convert(base_name: str, after_conversion_hook: Optional[Callable[[str], None]] = None):
+    '''Converts {base_name}.pro to CMake in a temporary directory.
+
+    The optional after_conversion_hook is a function that takes the temporary directory as
+    parameter.  It is called after the conversion took place.
+    '''
     pro_file_name = str(base_name) + ".pro"
     pro_file_path = test_data_dir.joinpath(pro_file_name)
     assert(pro_file_path.exists())
@@ -64,7 +77,15 @@ def convert(base_name: str):
         assert(f)
         content = f.read()
         assert(content)
+        if after_conversion_hook is not None:
+            after_conversion_hook(tmp_dir)
         return content
+
+
+def convert_and_compare_expected_output(pro_base_name: str, rel_expected_output_dir: str):
+    abs_expected_output_dir = test_data_dir.joinpath(rel_expected_output_dir)
+    convert(pro_base_name, functools.partial(compare_expected_output_directories,
+                                             expected=abs_expected_output_dir))
 
 
 def test_qt_modules():
@@ -94,3 +115,8 @@ def test_qt_version_check():
         if line.startswith("if(") and "QT_VERSION" in line:
             interesting_lines.append(line.strip())
     assert(["if(( ( (QT_VERSION_MAJOR GREATER 5) ) AND (QT_VERSION_MINOR LESS 1) ) AND (QT_VERSION_PATCH EQUAL 0))", "if(( ( (QT_VERSION VERSION_GREATER 6.6.5) ) AND (QT_VERSION VERSION_LESS 6.6.7) ) AND (QT_VERSION VERSION_EQUAL 6.6.6))"] == interesting_lines)
+
+
+def test_subdirs():
+    '''Test conversion of a TEMPLATE=subdirs project.'''
+    convert_and_compare_expected_output("subdirs/subdirs", "subdirs/expected")
