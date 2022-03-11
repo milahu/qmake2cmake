@@ -1879,6 +1879,24 @@ def handle_subdir(
         if subtractions:
             sub_dirs[subdir_name]["subtractions"] = subtractions
 
+    # Parse the sub-project, and retrieve the information needed for the top-level find_package
+    # calls.  This does not actually convert the file.
+    def extend_library_dependencies(path: str):
+        if in_recursion or out_library_dependencies is None:
+            return
+        if os.path.isdir(path):
+            path = re.sub("/+$", "", path)
+            path += "/" + os.path.basename(path) + ".pro"
+        parse_result, project_file_content = parseProFile(path, debug=False)
+        scope = Scope.FromDict(None, path, parse_result.asDict().get("statements"))
+        do_include(scope)
+        recursive_evaluate_scope(scope)
+        scopes = flatten_scopes(scope)
+        scopes = merge_scopes(scopes)
+        libdeps = extract_library_dependencies(scope, scopes, is_example=True)
+        out_library_dependencies.required_libs += libdeps.required_libs
+        out_library_dependencies.optional_libs += libdeps.optional_libs
+
     # Recursive helper that collects subdir info for given scope,
     # and the children of the given scope.
     def handle_subdir_helper(
@@ -1901,6 +1919,7 @@ def handle_subdir(
             # current scope.
             if os.path.isdir(sd) or sd.startswith("-"):
                 collect_subdir_info(sd, current_conditions=current_conditions)
+                extend_library_dependencies(sd)
             # For the file case, directly write into the file handle.
             elif os.path.isfile(sd):
                 # Handle cases with SUBDIRS += Foo/bar/z.pro. We want to be able
@@ -1910,6 +1929,7 @@ def handle_subdir(
                 dirname = os.path.dirname(sd)
                 if dirname:
                     collect_subdir_info(dirname, current_conditions=current_conditions)
+                    extend_library_dependencies(sd)
                 else:
                     subdir_result, project_file_content = parseProFile(sd, debug=False)
                     subdir_scope = Scope.FromDict(
@@ -2145,6 +2165,29 @@ def extract_cmake_libraries(
         _map_libraries_to_cmake(public_dependencies, known_libraries, is_example=is_example),
         _map_libraries_to_cmake(private_dependencies, known_libraries, is_example=is_example),
     )
+
+
+def extract_library_dependencies(
+    top_scope: Scope,
+    merged_scopes: List[Scope],
+    *,
+    is_example: bool = False,
+) -> LibraryDependencies:
+    # We consider packages as required if they appear at the top-level scope.
+    (public_libs, private_libs) = extract_cmake_libraries(top_scope, is_example=is_example)
+    libdeps: LibraryDependencies = LibraryDependencies(public_libs + private_libs, [])
+
+    # We consider packages inside scopes other than the top-level one as optional.
+    handling_first_scope = True
+    for inner_scope in merged_scopes:
+        if handling_first_scope:
+            handling_first_scope = False
+            continue
+        (public_libs, private_libs) = extract_cmake_libraries(inner_scope, is_example=is_example)
+        libdeps.optional_libs += public_libs
+        libdeps.optional_libs += private_libs
+
+    return libdeps
 
 
 def write_header(cm_fh: IO[str], name: str, typename: str, *, indent: int = 0):
@@ -4031,20 +4074,7 @@ def write_example(
     # scope condition.
     handle_source_subtractions(scopes)
     scopes = merge_scopes(scopes)
-
-    # We consider packages as required if they appear at the top-level scope.
-    (public_libs, private_libs) = extract_cmake_libraries(scope, is_example=True)
-    libdeps: LibraryDependencies = LibraryDependencies(public_libs + private_libs, [])
-
-    # We consider packages inside scopes other than the top-level one as optional.
-    handling_first_scope = True
-    for inner_scope in scopes:
-        if handling_first_scope:
-            handling_first_scope = False
-            continue
-        (public_libs, private_libs) = extract_cmake_libraries(inner_scope, is_example=True)
-        libdeps.optional_libs += public_libs
-        libdeps.optional_libs += private_libs
+    libdeps = extract_library_dependencies(scope, scopes, is_example=True)
 
     if not (is_user_project and is_sub_project):
         write_example_top_level_prelude(

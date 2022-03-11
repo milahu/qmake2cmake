@@ -8,7 +8,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS OpenGL)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Network OpenGL)
+find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS Core5Compat)
 
 qt_add_executable(app WIN32 MACOSX_BUNDLE
     main.cpp
