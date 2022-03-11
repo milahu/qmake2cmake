@@ -138,12 +138,6 @@ def _parse_commandline():
         help="Treat the input .pro file as a Qt example.",
     )
     parser.add_argument(
-        "--is-user-project",
-        action="store_true",
-        dest="is_user_project",
-        help="Treat the input .pro file as a user project.",
-    )
-    parser.add_argument(
         "-s",
         "--skip-special-case-preservation",
         dest="skip_special_case_preservation",
@@ -1869,7 +1863,6 @@ def handle_subdir(
     *,
     indent: int = 0,
     is_example: bool = False,
-    is_user_project: bool = False,
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
@@ -1976,7 +1969,6 @@ def handle_subdir(
                         cm_fh,
                         indent=indent,
                         is_example=is_example,
-                        is_user_project=is_user_project,
                         is_sub_project=True,
                         out_library_dependencies=out_library_dependencies,
                     )
@@ -2081,7 +2073,7 @@ def handle_subdir(
     handle_subdir_helper(scope, io_string, indent=indent, current_conditions=current_conditions)
 
     # Write the top-level project() prelude, including find_package() calls.
-    if not in_recursion and is_user_project:
+    if not in_recursion:
         project_name = scope.TARGET
         if not project_name:
             project_name = os.path.splitext(os.path.basename(scope.file))[0]
@@ -2092,7 +2084,6 @@ def handle_subdir(
             project_name,
             out_library_dependencies,
             indent=indent,
-            is_user_project=is_user_project,
         )
 
     # Write add_subdirectory() calls.
@@ -4046,7 +4037,6 @@ def write_example_top_level_prelude(
     library_dependencies: LibraryDependencies,
     *,
     indent: int = 0,
-    is_user_project: bool = False,
 ) -> None:
     project_version = scope.get_string("VERSION", "1.0")
     cm_fh.write(
@@ -4058,21 +4048,6 @@ def write_example_top_level_prelude(
     if scope.get_files("FORMS"):
         cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
     cm_fh.write("\n")
-
-    if not is_user_project:
-        example_install_dir = scope.expandString("target.path")
-        if not example_install_dir:
-            example_install_dir = "${INSTALL_EXAMPLESDIR}"
-        example_install_dir = example_install_dir.replace(
-            "$$[QT_INSTALL_EXAMPLES]", "${INSTALL_EXAMPLESDIR}"
-        )
-        cm_fh.write(
-            "if(NOT DEFINED INSTALL_EXAMPLESDIR)\n"
-            '    set(INSTALL_EXAMPLESDIR "examples")\n'
-            "endif()\n\n"
-            f'set(INSTALL_EXAMPLEDIR "{example_install_dir}")\n\n'
-        )
-
     write_top_level_find_package_section(cm_fh, library_dependencies, indent=indent)
 
 
@@ -4083,7 +4058,6 @@ def write_example(
     *,
     indent: int = 0,
     is_plugin: bool = False,
-    is_user_project: bool = False,
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> str:
@@ -4105,9 +4079,13 @@ def write_example(
     scopes = merge_scopes(scopes)
     libdeps = extract_library_dependencies(scope, scopes, is_example=True)
 
-    if not (is_user_project and is_sub_project):
+    if not is_sub_project:
         write_example_top_level_prelude(
-            cm_fh, scope, binary_name, libdeps, indent=indent, is_user_project=is_user_project
+            cm_fh,
+            scope,
+            binary_name,
+            libdeps,
+            indent=indent,
         )
 
     if out_library_dependencies is not None:
@@ -4251,15 +4229,6 @@ def write_example(
                 cm_fh.write(f"{spaces(indent)}endif()\n")
 
         handling_first_scope = False
-
-    if not is_user_project:
-        cm_fh.write(
-            f"\ninstall(TARGETS {binary_name}\n"
-            f'    RUNTIME DESTINATION "${{INSTALL_EXAMPLEDIR}}"\n'
-            f'    BUNDLE DESTINATION "${{INSTALL_EXAMPLEDIR}}"\n'
-            f'    LIBRARY DESTINATION "${{INSTALL_EXAMPLEDIR}}"\n'
-            f")\n"
-        )
 
     return binary_name
 
@@ -4655,7 +4624,6 @@ def handle_app_or_lib(
     *,
     indent: int = 0,
     is_example: bool = False,
-    is_user_project=False,
     is_sub_project=False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
@@ -4685,7 +4653,6 @@ def handle_app_or_lib(
             gui,
             indent=indent,
             is_plugin=is_plugin,
-            is_user_project=is_user_project,
             is_sub_project=is_sub_project,
             out_library_dependencies=out_library_dependencies,
         )
@@ -4972,66 +4939,32 @@ def cmakeify_scope(
     *,
     indent: int = 0,
     is_example: bool = False,
-    is_user_project: bool = False,
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
     template = scope.TEMPLATE
 
-    if is_user_project:
-        if template == "subdirs":
-            handle_subdir(
-                scope,
-                cm_fh,
-                indent=indent,
-                is_example=True,
-                is_user_project=True,
-                is_sub_project=is_sub_project,
-                out_library_dependencies=out_library_dependencies,
-            )
-        elif template in ("app", "lib"):
-            handle_app_or_lib(
-                scope,
-                cm_fh,
-                indent=indent,
-                is_example=True,
-                is_user_project=True,
-                is_sub_project=is_sub_project,
-                out_library_dependencies=out_library_dependencies,
-            )
-    else:
-        temp_buffer = io.StringIO()
-
-        # Handle top level repo project in a special way.
-        if is_top_level_repo_project(scope.file_absolute_path):
-            create_top_level_cmake_conf()
-            handle_top_level_repo_project(scope, temp_buffer)
-        # Same for top-level tests.
-        elif is_top_level_repo_tests_project(scope.file_absolute_path):
-            handle_top_level_repo_tests_project(scope, temp_buffer)
-        elif is_config_test_project(scope.file_absolute_path):
-            handle_config_test_project(scope, temp_buffer)
-        elif template == "subdirs":
-            handle_subdir(scope, temp_buffer, indent=indent, is_example=is_example)
-        elif template in ("app", "lib"):
-            handle_app_or_lib(scope, temp_buffer, indent=indent, is_example=is_example)
-        else:
-            print(f"    XXXX: {scope.file}: Template type {template} not yet supported.")
-
-        buffer_value = temp_buffer.getvalue()
-
-        if is_top_level_repo_examples_project(scope.file_absolute_path):
-            # Wrap top level examples project with some commands which
-            # are necessary to build examples as part of the overall
-            # build.
-            buffer_value = f"qt_examples_build_begin()\n\n{buffer_value}\nqt_examples_build_end()\n"
-
-        cm_fh.write(buffer_value)
+    if template == "subdirs":
+        handle_subdir(
+            scope,
+            cm_fh,
+            indent=indent,
+            is_example=True,
+            is_sub_project=is_sub_project,
+            out_library_dependencies=out_library_dependencies,
+        )
+    elif template in ("app", "lib"):
+        handle_app_or_lib(
+            scope,
+            cm_fh,
+            indent=indent,
+            is_example=True,
+            is_sub_project=is_sub_project,
+            out_library_dependencies=out_library_dependencies,
+        )
 
 
-def generate_new_cmakelists(
-    scope: Scope, *, is_example: bool = False, is_user_project: bool = True, debug: bool = False
-) -> None:
+def generate_new_cmakelists(scope: Scope, *, is_example: bool = False, debug: bool = False) -> None:
     if debug:
         print("Generating CMakeLists.gen.txt")
     with open(scope.generated_cmake_lists_path, "w") as cm_fh:
@@ -5044,7 +4977,6 @@ def generate_new_cmakelists(
             scope,
             cm_fh,
             is_example=final_is_example_decision,
-            is_user_project=is_user_project,
             is_sub_project=is_marked_as_subdir(scope.file),
         )
 
@@ -5245,7 +5177,6 @@ def main() -> None:
         generate_new_cmakelists(
             file_scope,
             is_example=args.is_example,
-            is_user_project=args.is_user_project,
             debug=args.debug,
         )
 
