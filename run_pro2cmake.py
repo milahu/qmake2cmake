@@ -177,32 +177,37 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         # qtbase main modules take longer than usual to process.
         workers = 2
 
+    def _process_a_file(data: typing.Tuple[str, int, int]) -> typing.Tuple[int, str, str]:
+        filename, index, total = data
+        pro2cmake_args = []
+        if sys.platform == "win32":
+            pro2cmake_args.append(sys.executable)
+        pro2cmake_args.append(pro2cmake)
+        if args.is_example:
+            pro2cmake_args.append("--is-example")
+        if args.skip_subdirs_projects:
+            pro2cmake_args.append("--skip-subdirs-project")
+        pro2cmake_args.append(os.path.basename(filename))
+
+        if args.pro2cmake_args:
+            pro2cmake_args += args.pro2cmake_args
+
+        result = subprocess.run(
+            pro2cmake_args,
+            cwd=os.path.dirname(filename),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        stdout = f"Converted[{index}/{total}]: {filename}\n"
+        return result.returncode, filename, stdout + result.stdout.decode()
+
+    # Convert the main .pro file first to create the subdir markers.
+    print(f"Converting the main project file {all_files[0]}")
+    _process_a_file((all_files[0], 0, 1))
+    all_files = all_files[1:]
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers, initargs=(10,)) as pool:
         print("Firing up thread pool executor.")
-
-        def _process_a_file(data: typing.Tuple[str, int, int]) -> typing.Tuple[int, str, str]:
-            filename, index, total = data
-            pro2cmake_args = []
-            if sys.platform == "win32":
-                pro2cmake_args.append(sys.executable)
-            pro2cmake_args.append(pro2cmake)
-            if args.is_example:
-                pro2cmake_args.append("--is-example")
-            if args.skip_subdirs_projects:
-                pro2cmake_args.append("--skip-subdirs-project")
-            pro2cmake_args.append(os.path.basename(filename))
-
-            if args.pro2cmake_args:
-                pro2cmake_args += args.pro2cmake_args
-
-            result = subprocess.run(
-                pro2cmake_args,
-                cwd=os.path.dirname(filename),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            stdout = f"Converted[{index}/{total}]: {filename}\n"
-            return result.returncode, filename, stdout + result.stdout.decode()
 
         for return_code, filename, stdout in pool.map(
             _process_a_file,
