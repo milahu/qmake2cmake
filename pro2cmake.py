@@ -139,17 +139,18 @@ def _parse_commandline():
     )
     parser.add_argument(
         "-s",
-        "--skip-special-case-preservation",
-        dest="skip_special_case_preservation",
+        "--enable-special-case-preservation",
+        dest="enable_special_case_preservation",
         action="store_true",
-        help="Skips behavior to reapply " "special case modifications (requires git in PATH)",
+        help="Enables special case modifications (requires git in PATH)",
     )
     parser.add_argument(
         "-k",
         "--keep-temporary-files",
         dest="keep_temporary_files",
         action="store_true",
-        help="Don't automatically remove CMakeLists.gen.txt and other " "intermediate files.",
+        help="Don't automatically remove CMakeLists.gen.txt and other intermediate files. "
+        "This is only relevant if special case preservation is enabled.",
     )
 
     parser.add_argument(
@@ -5186,7 +5187,7 @@ def main() -> None:
         if args.output_file:
             output_file = args.output_file
 
-        if not args.skip_special_case_preservation:
+        if args.enable_special_case_preservation:
             debug_special_case = args.debug_special_case_preservation or args.debug
             handler = SpecialCaseHandler(
                 output_file,
