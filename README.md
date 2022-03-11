@@ -37,7 +37,7 @@ python3.7 -m pip install -r requirements.txt
 
 # Usage
 
-The following call converts a single QMake project to CMake:
+The following call converts a single QMake project file to CMake:
 ```
 qmake2cmake ~/projects/myapp/myapp.pro
 ```
@@ -47,6 +47,11 @@ By default, a `CMakeLists.txt` is placed next to the `.pro` file.
 To generate `CMakeLists.txt` in a different location, use the `-o` option:
 ```
 qmake2cmake ~/projects/myapp/myapp.pro -o ~/projects/myapp-converted/CMakeLists.txt
+```
+
+To convert a whole project tree, pass the project directory to `run_qmake2cmake`:
+```
+run_qmake2cmake ~/projects/myapp
 ```
 
 # Contributing to the scripts
