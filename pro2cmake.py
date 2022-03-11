@@ -1824,6 +1824,33 @@ _path_replacements = {
 }
 
 
+def subdir_marker_path(path):
+    """Return the file path of the subdir marker file for the given path.
+    Path can be a file or directory.
+    """
+    if os.path.isfile(path):
+        path = os.path.dirname(path)
+    if path and not path.endswith("/"):
+        path += "/"
+    return path + ".qmake2cmake/subdir-of"
+
+
+def write_subdir_marker(path, content):
+    """Write the subdir marker file for the given path (file or directory)."""
+    file_path = subdir_marker_path(path)
+    basedir = os.path.dirname(file_path)
+    if not os.path.exists(basedir):
+        os.makedirs(basedir)
+    f = open(file_path, "w")
+    f.write(content + "\n")
+    f.close()
+
+
+def is_marked_as_subdir(path) -> bool:
+    """Return True if the path (file or directory) has a subdir marker file."""
+    return os.path.isfile(subdir_marker_path(path))
+
+
 def replace_path_constants(path: str, scope: Scope) -> str:
     """Clean up DESTDIR and target.path"""
     if path.startswith("./"):
@@ -1882,7 +1909,7 @@ def handle_subdir(
     # Parse the sub-project, and retrieve the information needed for the top-level find_package
     # calls.  This does not actually convert the file.
     def extend_library_dependencies(path: str):
-        if in_recursion or out_library_dependencies is None:
+        if is_sub_project or out_library_dependencies is None:
             return
         if os.path.isdir(path):
             path = re.sub("/+$", "", path)
@@ -1920,6 +1947,7 @@ def handle_subdir(
             if os.path.isdir(sd) or sd.startswith("-"):
                 collect_subdir_info(sd, current_conditions=current_conditions)
                 extend_library_dependencies(sd)
+                write_subdir_marker(sd, scope.file_absolute_path)
             # For the file case, directly write into the file handle.
             elif os.path.isfile(sd):
                 # Handle cases with SUBDIRS += Foo/bar/z.pro. We want to be able
@@ -1930,6 +1958,7 @@ def handle_subdir(
                 if dirname:
                     collect_subdir_info(dirname, current_conditions=current_conditions)
                     extend_library_dependencies(sd)
+                    write_subdir_marker(sd, scope.file_absolute_path)
                 else:
                     subdir_result, project_file_content = parseProFile(sd, debug=False)
                     subdir_scope = Scope.FromDict(
@@ -5012,7 +5041,11 @@ def generate_new_cmakelists(
         is_example_heuristic = is_example_project(scope.file_absolute_path)
         final_is_example_decision = is_example or is_example_heuristic
         cmakeify_scope(
-            scope, cm_fh, is_example=final_is_example_decision, is_user_project=is_user_project
+            scope,
+            cm_fh,
+            is_example=final_is_example_decision,
+            is_user_project=is_user_project,
+            is_sub_project=is_marked_as_subdir(scope.file),
         )
 
 
