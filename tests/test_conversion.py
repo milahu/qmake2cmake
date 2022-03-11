@@ -39,10 +39,10 @@ import subprocess
 import tempfile
 import typing
 
-debug_mode = bool(os.environ.get("DEBUG_PRO2CMAKE_TEST_CONVERSION"))
+debug_mode = bool(os.environ.get("DEBUG_QMAKE2CMAKE_TEST_CONVERSION"))
 test_script_dir = pathlib.Path(__file__).parent.resolve()
-pro2cmake_dir = test_script_dir.parent.resolve()
-pro2cmake_py = pro2cmake_dir.joinpath("pro2cmake.py")
+qmake2cmake_dir = test_script_dir.parent.resolve()
+qmake2cmake = qmake2cmake_dir.joinpath("qmake2cmake")
 test_data_dir = test_script_dir.joinpath("data", "conversion")
 
 
@@ -53,12 +53,13 @@ def convert(base_name: str):
     with TemporaryDirectory(prefix="testqmake2cmake") as tmp_dir_str:
         tmp_dir = pathlib.Path(tmp_dir_str)
         output_file_path = tmp_dir.joinpath("CMakeLists.txt")
-        exit_code = subprocess.call([pro2cmake_py, "--is-example", "-o", output_file_path, pro_file_path])
+        exit_code = subprocess.call([qmake2cmake, "-o", output_file_path, pro_file_path])
         assert(exit_code == 0)
         if debug_mode:
-            shutil.copyfile(output_file_path, tempfile.gettempdir() + "/pro2cmake/CMakeLists.txt")
+            output_dir = tempfile.gettempdir() + "/qmake2cmake"
             if not os.path.isdir(output_dir):
                 os.mkdir(output_dir)
+            shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
         f = open(output_file_path, "r")
         assert(f)
         content = f.read()
