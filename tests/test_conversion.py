@@ -68,6 +68,7 @@ def convert(base_name: str):
 
 
 def test_qt_modules():
+    '''Test the conversion of QT assignments to find_package calls.'''
     output = convert("required_qt_modules")
     find_package_lines = []
     for line in output.split("\n"):
@@ -86,6 +87,7 @@ def test_qt_modules():
             "find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS OpenGL)"] == find_package_lines)
 
 def test_qt_version_check():
+    '''Test the conversion of QT_VERSION checks.'''
     output = convert("qt_version_check")
     interesting_lines = []
     for line in output.split("\n"):
