@@ -57,6 +57,8 @@ def convert(base_name: str):
         assert(exit_code == 0)
         if debug_mode:
             shutil.copyfile(output_file_path, tempfile.gettempdir() + "/pro2cmake/CMakeLists.txt")
+            if not os.path.isdir(output_dir):
+                os.mkdir(output_dir)
         f = open(output_file_path, "r")
         assert(f)
         content = f.read()
