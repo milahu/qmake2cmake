@@ -177,13 +177,6 @@ def _parse_commandline():
     )
 
     parser.add_argument(
-        "--api-version",
-        dest="api_version",
-        type=int,
-        help="Specify which cmake api version should be generated. 1, 2 or 3, 3 is latest.",
-    )
-
-    parser.add_argument(
         "-o",
         "--output-file",
         dest="output_file",
@@ -434,39 +427,6 @@ def set_up_cmake_api_calls():
 
 
 cmake_api_calls = set_up_cmake_api_calls()
-
-
-def detect_cmake_api_version_used_in_file_content(project_file_path: str) -> Optional[int]:
-    dir_path = os.path.dirname(project_file_path)
-    cmake_project_path = os.path.join(dir_path, "CMakeLists.txt")
-
-    # If file doesn't exist, None implies default version selected by
-    # script.
-    if not os.path.exists(cmake_project_path):
-        return None
-
-    with open(cmake_project_path, "r") as file_fd:
-        contents = file_fd.read()
-
-        api_call_versions = [version for version in cmake_api_calls]
-        api_call_versions = sorted(api_call_versions, reverse=True)
-        api_call_version_matches = {}
-        for version in api_call_versions:
-            versioned_api_calls = [
-                cmake_api_calls[version][api_call] for api_call in cmake_api_calls[version]
-            ]
-            versioned_api_calls_alternatives = "|".join(versioned_api_calls)
-            api_call_version_matches[version] = re.search(
-                versioned_api_calls_alternatives, contents
-            )
-
-        # If new style found, return latest api version. Otherwise
-        # return the current version.
-        for version in api_call_version_matches:
-            if api_call_version_matches[version]:
-                return version
-
-    return 1
 
 
 def get_cmake_api_call(api_name: str, api_version: Optional[int] = None) -> str:
@@ -5128,20 +5088,6 @@ def main() -> None:
             continue
 
         parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
-
-        # If CMake api version is given on command line, that means the
-        # user wants to force use that api version.
-        global cmake_api_version
-        if args.api_version:
-            cmake_api_version = args.api_version
-        else:
-            # Otherwise detect the api version in the old CMakeLists.txt
-            # if it exsists.
-            detected_cmake_api_version = detect_cmake_api_version_used_in_file_content(
-                file_relative_path
-            )
-            if detected_cmake_api_version:
-                cmake_api_version = detected_cmake_api_version
 
         if args.debug_parse_result or args.debug:
             print("\n\n#### Parser result:")
