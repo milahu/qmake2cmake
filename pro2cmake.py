@@ -132,12 +132,6 @@ def _parse_commandline():
     )
 
     parser.add_argument(
-        "--is-example",
-        action="store_true",
-        dest="is_example",
-        help="Treat the input .pro file as a Qt example.",
-    )
-    parser.add_argument(
         "-s",
         "--enable-special-case-preservation",
         dest="enable_special_case_preservation",
@@ -232,43 +226,6 @@ def is_top_level_repo_examples_project(project_file_path: str = "") -> bool:
         qmake_or_cmake_conf_dir_path == normalized_maybe_same_level_dir_path
         and project_dir_name == "examples"
     )
-
-
-def is_example_project(project_file_path: str = "") -> bool:
-    # If there's a .qmake.conf or .cmake.conf file in the parent
-    # directories of the given project path, it is likely that the
-    # project is an internal Qt project that uses private Qt CMake
-    # API.
-    found_qt_repo_version = False
-    qmake_conf = find_qmake_conf(project_file_path)
-    if qmake_conf:
-        repo_version = parse_qt_repo_module_version_from_qmake_conf(qmake_conf)
-        if repo_version:
-            found_qt_repo_version = True
-
-    cmake_conf = find_cmake_conf(project_file_path)
-    if cmake_conf:
-        repo_version = parse_qt_repo_module_version_from_cmake_conf(cmake_conf)
-        if repo_version:
-            found_qt_repo_version = True
-
-    # If we haven't found a conf file, we assume this is an example
-    # project and not a project under a qt source repository.
-    if not found_qt_repo_version:
-        return True
-
-    # If the project file is found in a subdir called 'examples'
-    # relative to the repo source dir, then it must be an example, but
-    # some examples contain 3rdparty libraries that do not need to be
-    # built as examples.
-    qmake_or_cmake_conf_path = find_qmake_or_cmake_conf(project_file_path)
-    qmake_or_cmake_conf_dir_path = os.path.dirname(qmake_or_cmake_conf_path)
-    project_relative_path = os.path.relpath(project_file_path, qmake_or_cmake_conf_dir_path)
-
-    is_example_under_repo_sources = (
-        project_relative_path.startswith("examples") and "3rdparty" not in project_relative_path
-    )
-    return is_example_under_repo_sources
 
 
 def is_config_test_project(project_file_path: str = "") -> bool:
@@ -569,7 +526,6 @@ def write_add_qt_resource_call(
     lang: Optional[str],
     files: Dict[str, str],
     skip_qtquick_compiler: bool,
-    is_example: bool,
 ) -> str:
     output = ""
 
@@ -623,10 +579,7 @@ def write_add_qt_resource_call(
     params += f'{spaces(1)}PREFIX\n{spaces(2)}"{prefix}"\n'
     if base_dir:
         params += f'{spaces(1)}BASE\n{spaces(2)}"{base_dir}"\n'
-    if is_example:
-        add_resource_command = "qt6_add_resources"
-    else:
-        add_resource_command = get_cmake_api_call("qt_add_resource")
+    add_resource_command = "qt6_add_resources"
     output += (
         f'{add_resource_command}({target} "{resource_name}"\n{params}{spaces(1)}FILES\n'
         f"{spaces(2)}{file_list}\n)\n"
@@ -1823,7 +1776,6 @@ def handle_subdir(
     cm_fh: IO[str],
     *,
     indent: int = 0,
-    is_example: bool = False,
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
@@ -1874,7 +1826,7 @@ def handle_subdir(
         recursive_evaluate_scope(scope)
         scopes = flatten_scopes(scope)
         scopes = merge_scopes(scopes)
-        libdeps = extract_library_dependencies(scope, scopes, is_example=True)
+        libdeps = extract_library_dependencies(scope, scopes)
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
 
@@ -1929,7 +1881,6 @@ def handle_subdir(
                         subdir_scope,
                         cm_fh,
                         indent=indent,
-                        is_example=is_example,
                         is_sub_project=True,
                         out_library_dependencies=out_library_dependencies,
                     )
@@ -2089,9 +2040,7 @@ def sort_sources(sources: List[str]) -> List[str]:
     return lines
 
 
-def _map_libraries_to_cmake(
-    libraries: List[str], known_libraries: Set[str], is_example: bool = False
-) -> List[str]:
+def _map_libraries_to_cmake(libraries: List[str], known_libraries: Set[str]) -> List[str]:
     result = []  # type: List[str]
     is_framework = False
 
@@ -2100,10 +2049,7 @@ def _map_libraries_to_cmake(
             is_framework = True
             continue
         if is_framework:
-            if is_example:
-                lib = f'"-framework {lib}"'
-            else:
-                lib = f"${{FW{lib}}}"
+            lib = f'"-framework {lib}"'
         if lib.startswith("-l"):
             lib = lib[2:]
 
@@ -2122,7 +2068,7 @@ def _map_libraries_to_cmake(
 
 
 def extract_cmake_libraries(
-    scope: Scope, *, known_libraries: Optional[Set[str]] = None, is_example: bool = False
+    scope: Scope, *, known_libraries: Optional[Set[str]] = None
 ) -> Tuple[List[str], List[str]]:
     if known_libraries is None:
         known_libraries = set()
@@ -2143,19 +2089,16 @@ def extract_cmake_libraries(
             public_dependencies.append(mapped_lib)
 
     return (
-        _map_libraries_to_cmake(public_dependencies, known_libraries, is_example=is_example),
-        _map_libraries_to_cmake(private_dependencies, known_libraries, is_example=is_example),
+        _map_libraries_to_cmake(public_dependencies, known_libraries),
+        _map_libraries_to_cmake(private_dependencies, known_libraries),
     )
 
 
 def extract_library_dependencies(
-    top_scope: Scope,
-    merged_scopes: List[Scope],
-    *,
-    is_example: bool = False,
+    top_scope: Scope, merged_scopes: List[Scope]
 ) -> LibraryDependencies:
     # We consider packages as required if they appear at the top-level scope.
-    (public_libs, private_libs) = extract_cmake_libraries(top_scope, is_example=is_example)
+    (public_libs, private_libs) = extract_cmake_libraries(top_scope)
     libdeps: LibraryDependencies = LibraryDependencies(public_libs + private_libs, [])
 
     # We consider packages inside scopes other than the top-level one as optional.
@@ -2164,7 +2107,7 @@ def extract_library_dependencies(
         if handling_first_scope:
             handling_first_scope = False
             continue
-        (public_libs, private_libs) = extract_cmake_libraries(inner_scope, is_example=is_example)
+        (public_libs, private_libs) = extract_cmake_libraries(inner_scope)
         libdeps.optional_libs += public_libs
         libdeps.optional_libs += private_libs
 
@@ -2652,7 +2595,6 @@ def write_resources(
     target: str,
     scope: Scope,
     indent: int = 0,
-    is_example=False,
     target_ref: str = None,
     resources: List[QtResource] = None,
     skipped_standalone_files: List[str] = None,
@@ -2676,7 +2618,6 @@ def write_resources(
             lang=r.lang,
             files=r.files,
             skip_qtquick_compiler=r.skip_qtquick_compiler,
-            is_example=is_example,
         )
 
     if skipped_standalone_files:
@@ -2696,15 +2637,12 @@ def write_resources(
                 cm_fh.write("\n")
 
 
-def write_statecharts(cm_fh: IO[str], target: str, scope: Scope, indent: int = 0, is_example=False):
+def write_statecharts(cm_fh: IO[str], target: str, scope: Scope, indent: int = 0):
     sources = scope.get_files("STATECHARTS", use_vpath=True)
     if not sources:
         return
     cm_fh.write("\n# Statecharts:\n")
-    if is_example:
-        cm_fh.write(f"qt6_add_statecharts({target}\n")
-    else:
-        cm_fh.write(f"add_qt_statecharts({target} FILES\n")
+    cm_fh.write(f"qt6_add_statecharts({target}\n")
     indent += 1
     for f in sources:
         cm_fh.write(f"{spaces(indent)}{f}\n")
@@ -4012,7 +3950,7 @@ def write_example_top_level_prelude(
     write_top_level_find_package_section(cm_fh, library_dependencies, indent=indent)
 
 
-def write_example(
+def write_app_or_lib(
     cm_fh: IO[str],
     scope: Scope,
     gui: bool = False,
@@ -4038,7 +3976,7 @@ def write_example(
     # scope condition.
     handle_source_subtractions(scopes)
     scopes = merge_scopes(scopes)
-    libdeps = extract_library_dependencies(scope, scopes, is_example=True)
+    libdeps = extract_library_dependencies(scope, scopes)
 
     if not is_sub_project:
         write_example_top_level_prelude(
@@ -4138,7 +4076,7 @@ def write_example(
             footer=")\n",
         )
 
-        (scope_public_libs, scope_private_libs) = extract_cmake_libraries(scope, is_example=True)
+        (scope_public_libs, scope_private_libs) = extract_cmake_libraries(scope)
 
         write_list(
             io_string,
@@ -4173,11 +4111,10 @@ def write_example(
             binary_name,
             scope,
             indent=indent,
-            is_example=True,
             resources=resources,
             skipped_standalone_files=standalone_qtquick_compiler_skipped_files,
         )
-        write_statecharts(io_string, binary_name, scope, indent=indent, is_example=True)
+        write_statecharts(io_string, binary_name, scope, indent=indent)
         write_repc_files(io_string, binary_name, scope, indent=indent)
 
         if condition != "ON":
@@ -4584,7 +4521,6 @@ def handle_app_or_lib(
     cm_fh: IO[str],
     *,
     indent: int = 0,
-    is_example: bool = False,
     is_sub_project=False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
@@ -4592,23 +4528,16 @@ def handle_app_or_lib(
 
     config = scope.get("CONFIG")
     is_jar = "java" in config
-    is_lib = scope.TEMPLATE == "lib"
-    is_qml_plugin = any("qml_plugin" == s for s in scope.get("_LOADED"))
     is_plugin = "plugin" in config
-    is_qt_plugin = any("qt_plugin" == s for s in scope.get("_LOADED")) or is_qml_plugin
     target = ""
-    target_ref = None
     gui = all(val not in config for val in ["console", "cmdline", "-app_bundle"]) and all(
         val not in scope.expand("QT") for val in ["testlib", "testlib-private"]
     )
 
     if is_jar:
         write_jar(cm_fh, scope, indent=indent)
-    elif "qt_helper_lib" in scope.get("_LOADED"):
-        assert not is_example
-        target = write_3rdparty_library(cm_fh, scope, indent=indent)
-    elif is_example:
-        target = write_example(
+    else:
+        target = write_app_or_lib(
             cm_fh,
             scope,
             gui,
@@ -4617,33 +4546,7 @@ def handle_app_or_lib(
             is_sub_project=is_sub_project,
             out_library_dependencies=out_library_dependencies,
         )
-    elif is_qt_plugin:
-        assert not is_example
-        target = write_plugin(cm_fh, scope, indent=indent)
-    elif (is_lib and "qt_module" not in scope.get("_LOADED")) or is_plugin:
-        assert not is_example
-        target = write_generic_library(cm_fh, scope, indent=indent)
-    elif is_lib or "qt_module" in scope.get("_LOADED"):
-        assert not is_example
-        target = write_module(cm_fh, scope, indent=indent)
-    elif "qt_tool" in scope.get("_LOADED"):
-        assert not is_example
-        target, target_ref = write_tool(cm_fh, scope, indent=indent)
-    elif "qt_app" in scope.get("_LOADED"):
-        assert not is_example
-        scope._is_internal_qt_app = True
-        target = write_qt_app(cm_fh, scope, indent=indent)
-    else:
-        if "testcase" in config or "testlib" in config or "qmltestcase" in config:
-            assert not is_example
-            target = write_test(cm_fh, scope, gui, indent=indent)
-        else:
-            target = write_binary(cm_fh, scope, gui, indent=indent)
 
-    if target_ref is None:
-        target_ref = target
-
-    # ind = spaces(indent)
     cmake_api_call = get_cmake_api_call("qt_add_docs")
     write_source_file_list(
         cm_fh,
@@ -4651,49 +4554,9 @@ def handle_app_or_lib(
         "",
         ["QMAKE_DOCS"],
         indent,
-        header=f"{cmake_api_call}({target_ref}\n",
+        header=f"{cmake_api_call}({target}\n",
         footer=")\n",
     )
-
-    # Generate qmltypes instruction for anything that may have CONFIG += qmltypes
-    # that is not a qml plugin
-    if (
-        not is_example
-        and "qmltypes" in scope.get("CONFIG")
-        and "qml_plugin" not in scope.get("_LOADED")
-    ):
-        cm_fh.write(f"\n{spaces(indent)}set_target_properties({target_ref} PROPERTIES\n")
-
-        install_dir = scope.expandString("QMLTYPES_INSTALL_DIR")
-        if install_dir:
-            cm_fh.write(f"{spaces(indent+1)}QT_QML_MODULE_INSTALL_QMLTYPES TRUE\n")
-
-        import_version = get_qml_import_version(scope, target)
-        if import_version:
-            cm_fh.write(f"{spaces(indent+1)}QT_QML_MODULE_VERSION {import_version}\n")
-
-        past_major_versions = scope.expandString("QML_PAST_MAJOR_VERSIONS")
-        if past_major_versions:
-            cm_fh.write(f"{spaces(indent+1)}QT_QML_PAST_MAJOR_VERSIONS {past_major_versions}\n")
-
-        import_name = scope.expandString("QML_IMPORT_NAME")
-        if import_name:
-            cm_fh.write(f"{spaces(indent+1)}QT_QML_MODULE_URI {import_name}\n")
-
-        json_output_filename = scope.expandString("QMLTYPES_FILENAME")
-        if json_output_filename:
-            cm_fh.write(f"{spaces(indent+1)}QT_QMLTYPES_FILENAME {json_output_filename}\n")
-
-        target_path = scope.get("TARGETPATH")
-        if target_path:
-            cm_fh.write(f"{spaces(indent+1)}QT_QML_MODULE_TARGET_PATH {target_path}\n")
-
-        if install_dir:
-            install_dir = install_dir.replace("$$[QT_INSTALL_QML]", "${INSTALL_QMLDIR}")
-            cm_fh.write(f'{spaces(indent+1)}QT_QML_MODULE_INSTALL_DIR "{install_dir}"\n')
-
-        cm_fh.write(f"{spaces(indent)})\n\n")
-        cm_fh.write(f"qt6_qml_type_registration({target_ref})\n")
 
 
 def handle_top_level_repo_project(scope: Scope, cm_fh: IO[str]):
@@ -4899,7 +4762,6 @@ def cmakeify_scope(
     cm_fh: IO[str],
     *,
     indent: int = 0,
-    is_example: bool = False,
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
@@ -4910,7 +4772,6 @@ def cmakeify_scope(
             scope,
             cm_fh,
             indent=indent,
-            is_example=True,
             is_sub_project=is_sub_project,
             out_library_dependencies=out_library_dependencies,
         )
@@ -4919,25 +4780,21 @@ def cmakeify_scope(
             scope,
             cm_fh,
             indent=indent,
-            is_example=True,
             is_sub_project=is_sub_project,
             out_library_dependencies=out_library_dependencies,
         )
 
 
-def generate_new_cmakelists(scope: Scope, *, is_example: bool = False, debug: bool = False) -> None:
+def generate_new_cmakelists(scope: Scope, *, debug: bool = False) -> None:
     if debug:
         print("Generating CMakeLists.gen.txt")
     with open(scope.generated_cmake_lists_path, "w") as cm_fh:
         assert scope.file
         cm_fh.write(f"# Generated from {os.path.basename(scope.file)}.\n\n")
 
-        is_example_heuristic = is_example_project(scope.file_absolute_path)
-        final_is_example_decision = is_example or is_example_heuristic
         cmakeify_scope(
             scope,
             cm_fh,
-            is_example=final_is_example_decision,
             is_sub_project=is_marked_as_subdir(scope.file),
         )
 
@@ -5123,7 +4980,6 @@ def main() -> None:
 
         generate_new_cmakelists(
             file_scope,
-            is_example=args.is_example,
             debug=args.debug,
         )
 

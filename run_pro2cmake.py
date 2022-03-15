@@ -39,6 +39,7 @@ import qmake_parser
 from argparse import ArgumentParser
 from pro2cmake import do_include, Scope
 
+
 def parse_command_line() -> argparse.Namespace:
     parser = ArgumentParser(
         description="Run pro2cmake on all .pro files recursively in given path. "
@@ -74,13 +75,7 @@ def parse_command_line() -> argparse.Namespace:
         dest="skip_smart_directory_filtering",
         action="store_true",
         help="Don't run pro2cmake on a pro file which is included in a subdir project in the same "
-             "directory.",
-    )
-    parser.add_argument(
-        "--is-example",
-        dest="is_example",
-        action="store_true",
-        help="Run pro2cmake with --is-example flag.",
+        "directory.",
     )
     parser.add_argument(
         "--count", dest="count", help="How many projects should be converted.", type=int
@@ -244,8 +239,6 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         if sys.platform == "win32":
             pro2cmake_args.append(sys.executable)
         pro2cmake_args.append(pro2cmake)
-        if args.is_example:
-            pro2cmake_args.append("--is-example")
         if args.skip_subdirs_projects:
             pro2cmake_args.append("--skip-subdirs-project")
         pro2cmake_args.append(os.path.basename(filename))
