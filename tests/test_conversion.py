@@ -120,3 +120,25 @@ def test_qt_version_check():
 def test_subdirs():
     '''Test conversion of a TEMPLATE=subdirs project.'''
     convert_and_compare_expected_output("subdirs/subdirs", "subdirs/expected")
+
+
+def test_common_project_types():
+    output = convert("lib_shared")
+    assert(r"""
+qt_add_library(lib_shared
+""" in output)
+
+    output = convert("lib_static")
+    assert(r"""
+qt_add_library(lib_static STATIC
+""" in output)
+
+    output = convert("plugin_shared")
+    assert(r"""
+qt_add_plugin(plugin_shared
+""" in output)
+
+    output = convert("plugin_static")
+    assert(r"""
+qt_add_plugin(plugin_static STATIC
+""" in output)

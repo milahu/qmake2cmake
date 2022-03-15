@@ -3963,7 +3963,7 @@ def write_app_or_lib(
     binary_name = scope.TARGET
     assert binary_name
     config = scope.get("CONFIG")
-    is_qml_plugin = ("qml" in scope.get("QT")) or "qmltypes" in config
+    is_qml_module = ("qml" in scope.get("QT")) or "qmltypes" in config
 
     recursive_evaluate_scope(scope)
 
@@ -3994,31 +3994,25 @@ def write_app_or_lib(
     cm_fh.write("\n")
 
     (resources, standalone_qtquick_compiler_skipped_files) = extract_resources(binary_name, scope)
-    qml_resource = find_qml_resource(resources) if is_qml_plugin else None
+    qml_resource = find_qml_resource(resources) if is_qml_module else None
 
     add_target = ""
 
-    if is_plugin:
-        if is_qml_plugin:
-            extra_args = [f"PLUGIN_TARGET {binary_name}"]
-            io_string = io.StringIO()
-            write_qml_module(
-                io_string,
-                binary_name,
-                scope,
-                scopes,
-                indent=indent,
-                resource=qml_resource,
-                extra_add_qml_module_args=extra_args,
-            )
-            add_target += io_string.getvalue()
-        else:
-            add_target = f"qt_add_plugin({binary_name}"
-            if "static" in scope.get("CONFIG"):
-                add_target += " STATIC"
-            add_target += ")\n"
+    if is_plugin and is_qml_module:
+        extra_args = [f"PLUGIN_TARGET {binary_name}"]
+        io_string = io.StringIO()
+        write_qml_module(
+            io_string,
+            binary_name,
+            scope,
+            scopes,
+            indent=indent,
+            resource=qml_resource,
+            extra_add_qml_module_args=extra_args,
+        )
+        add_target += io_string.getvalue()
         add_target += f"target_sources({binary_name} PRIVATE"
-    else:
+    elif scope.TEMPLATE == "app":
         add_target = f"qt_add_executable({binary_name}"
 
         property_win32, property_mac_bundle = get_win32_and_mac_bundle_properties(scope)
@@ -4027,11 +4021,18 @@ def write_app_or_lib(
             add_target += " " + "WIN32"
         if property_mac_bundle:
             add_target += " " + "MACOSX_BUNDLE"
+    else:
+        if is_plugin:
+            add_target = f"qt_add_plugin({binary_name}"
+        else:
+            add_target = f"qt_add_library({binary_name}"
+        if "static" in config:
+            add_target += " STATIC"
 
     write_all_source_file_lists(cm_fh, scope, add_target, indent=0)
     cm_fh.write(")\n")
 
-    if is_qml_plugin and not is_plugin:
+    if is_qml_module and not is_plugin:
         write_qml_module(cm_fh, binary_name, scope, scopes, indent=indent, resource=qml_resource)
 
     handling_first_scope = True
