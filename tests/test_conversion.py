@@ -123,6 +123,30 @@ def test_subdirs():
 
 
 def test_common_project_types():
+    output = convert("app")
+    assert(r"""
+qt_add_executable(app WIN32 MACOSX_BUNDLE
+    main.cpp
+)""" in output)
+
+    output = convert("app_cmdline")
+    assert(r"""
+qt_add_executable(myapp
+    main.cpp
+)""" in output)
+
+    output = convert("app_console")
+    assert(r"""
+qt_add_executable(myapp MACOSX_BUNDLE
+    main.cpp
+)""" in output)
+
+    output = convert("app_nonbundle")
+    assert(r"""
+qt_add_executable(myapp WIN32
+    main.cpp
+)""" in output)
+
     output = convert("lib_shared")
     assert(r"""
 qt_add_library(lib_shared
