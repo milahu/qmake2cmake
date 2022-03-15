@@ -166,3 +166,58 @@ qt_add_plugin(plugin_shared
     assert(r"""
 qt_add_plugin(plugin_static STATIC
 """ in output)
+
+
+def test_qml_modules():
+    output = convert("app_qml_module")
+    assert(r"""
+qt_add_executable(myapp WIN32 MACOSX_BUNDLE
+    donkeyengine.cpp donkeyengine.h
+    main.cpp
+)
+qt_add_qml_module(myapp
+    URI DonkeySimulator
+    VERSION 1.0
+    QML_FILES
+        donkey.qml
+        waggle_ears.js
+    RESOURCES
+        bray.ogg
+        hoofs.ogg
+    NO_RESOURCE_TARGET_PATH
+)
+""" in output)
+
+    output = convert("lib_qml_module")
+    assert(r"""
+qt_add_library(lib_qml_module
+    donkeyengine.cpp donkeyengine.h
+)
+qt_add_qml_module(lib_qml_module
+    URI DonkeySimulator
+    VERSION 1.0
+    QML_FILES
+        donkey.qml
+        waggle_ears.js
+    RESOURCES
+        bray.ogg
+        hoofs.ogg
+)""" in output)
+
+    output = convert("plugin_qml_module")
+    assert(r"""
+qt_add_qml_module(plugin_qml_module
+    URI DonkeySimulator
+    VERSION 1.0
+    QML_FILES
+        donkey.qml
+        waggle_ears.js
+    RESOURCES
+        bray.ogg
+        hoofs.ogg
+    PLUGIN_TARGET plugin_qml_module
+)
+
+target_sources(plugin_qml_module PRIVATE
+    donkeyengine.cpp donkeyengine.h
+)""" in output)

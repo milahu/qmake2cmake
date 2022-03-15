@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>donkey.qml</file>
+        <file>waggle_ears.js</file>
+        <file>bray.ogg</file>
+        <file>hoofs.ogg</file>
+    </qresource>
+</RCC>
