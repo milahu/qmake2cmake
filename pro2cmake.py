@@ -1852,6 +1852,8 @@ def handle_subdir(
             # current scope.
             if os.path.isdir(sd) or sd.startswith("-"):
                 collect_subdir_info(sd, current_conditions=current_conditions)
+                if sd.startswith("-"):
+                    sd = sd[1:]
                 extend_library_dependencies(sd)
                 write_subdir_marker(sd, scope.file_absolute_path)
             # For the file case, directly write into the file handle.
