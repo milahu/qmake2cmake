@@ -1791,6 +1791,16 @@ def handle_subdir(
     # type hints.
     sub_dirs: Dict[str, Dict[str, Set[FrozenSet[str]]]] = {}
 
+    # Return the subdir with SUBDIRS modifiers applied.
+    def apply_subdirs_modifiers(scope: Scope, sd: str):
+        sd_file = scope.get_string(sd + ".file")
+        sd_subdir = scope.get_string(sd + ".subdir")
+        if sd_file:
+            sd = sd_file
+        elif sd_subdir:
+            sd = sd_subdir
+        return sd
+
     # Collects assignment conditions into global sub_dirs dict.
     def collect_subdir_info(sub_dir_assignment: str, *, current_conditions: FrozenSet[str] = None):
         subtraction = sub_dir_assignment.startswith("-")
@@ -1829,6 +1839,19 @@ def handle_subdir(
         libdeps = extract_library_dependencies(scope, scopes)
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
+        if scope.TEMPLATE == "subdirs":
+            all_subdirs: List[str] = []
+            seen: Set[str] = set()
+            for s in scopes:
+                for d in s.get("SUBDIRS"):
+                    if d.startswith("-"):
+                        d = d[1:]
+                    if d not in seen:
+                        seen.add(d)
+                        all_subdirs.append(d)
+            for sd in all_subdirs:
+                sd = apply_subdirs_modifiers(scope, sd)
+                extend_library_dependencies(os.path.dirname(scope.file) + "/" + sd)
 
     # Recursive helper that collects subdir info for given scope,
     # and the children of the given scope.
@@ -1840,13 +1863,7 @@ def handle_subdir(
         current_conditions: FrozenSet[str] = frozenset(),
     ):
         for sd in scope.get_files("SUBDIRS"):
-            # Handle .file and .subdir modifiers
-            sd_file = scope.get_string(sd + ".file")
-            sd_subdir = scope.get_string(sd + ".subdir")
-            if sd_file:
-                sd = sd_file
-            elif sd_subdir:
-                sd = sd_subdir
+            sd = apply_subdirs_modifiers(scope, sd)
 
             # Collect info about conditions and SUBDIR assignments in the
             # current scope.
