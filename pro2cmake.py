@@ -3850,10 +3850,13 @@ def write_top_level_find_package_section(
         qt_package_name="Qt${QT_VERSION_MAJOR}",
     )
 
+    # Remove optional packages that are already required.
+    optional_libs = list(set(dependencies.optional_libs) - set(dependencies.required_libs))
+
     # Write find_package calls for optional packages.
     write_find_package_section(
         cm_fh,
-        dependencies.optional_libs,
+        optional_libs,
         indent=indent,
         is_required=False,
         end_with_extra_newline=False,
