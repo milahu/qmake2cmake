@@ -437,7 +437,7 @@ class QmakeParser:
         return result, contents
 
     def parseFile(self, file: str) -> Tuple[pp.ParseResults, str]:
-        print(f'Parsing "{file}"...')
+        print(f'Parsing "{file}"...', flush=True)
         with open(file, "r") as file_fd:
             contents = file_fd.read()
             result, contents = self.parseFileContents(contents)

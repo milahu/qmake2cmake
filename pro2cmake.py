@@ -1830,7 +1830,7 @@ def handle_subdir(
         if os.path.isdir(path):
             path = re.sub("/+$", "", path)
             path += "/" + os.path.basename(path) + ".pro"
-        print(f'Analyzing "{path}"...')
+        print(f'Analyzing "{path}"...', flush=True)
         file_contents = ""
         with open(path, "r") as file_fd:
             file_contents = file_fd.read()
