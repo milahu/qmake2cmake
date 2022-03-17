@@ -233,7 +233,9 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         # qtbase main modules take longer than usual to process.
         workers = 2
 
-    def _process_a_file(data: typing.Tuple[str, int, int]) -> typing.Tuple[int, str, str]:
+    def _process_a_file(
+        data: typing.Tuple[str, int, int], direct_output: bool = False
+    ) -> typing.Tuple[int, str, str]:
         filename, index, total = data
         pro2cmake_args = []
         if sys.platform == "win32":
@@ -246,18 +248,29 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         if args.pro2cmake_args:
             pro2cmake_args += args.pro2cmake_args
 
+        if direct_output:
+            stdout_arg = None
+            stderr_arg = None
+        else:
+            stdout_arg = subprocess.PIPE
+            stderr_arg = subprocess.STDOUT
+
         result = subprocess.run(
             pro2cmake_args,
             cwd=os.path.dirname(filename),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=stdout_arg,
+            stderr=stderr_arg,
         )
         stdout = f"Converted[{index}/{total}]: {filename}\n"
-        return result.returncode, filename, stdout + result.stdout.decode()
+        if direct_output:
+            output_result = ""
+        else:
+            output_result = stdout + result.stdout.decode()
+        return result.returncode, filename, output_result
 
     # Convert the main .pro file first to create the subdir markers.
     print(f"Converting the main project file {all_files[0]}")
-    _process_a_file((all_files[0], 0, 1))
+    _process_a_file((all_files[0], 0, 1), direct_output=True)
     all_files = all_files[1:]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers, initargs=(10,)) as pool:
