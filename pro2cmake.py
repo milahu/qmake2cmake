@@ -69,7 +69,7 @@ from typing import (
     Type,
 )
 
-from qmake_parser import parseProFile
+from qmake_parser import parseProFile, parseProFileContents
 from special_case_helper import SpecialCaseHandler
 from helper import (
     map_qt_library,
@@ -1830,7 +1830,11 @@ def handle_subdir(
         if os.path.isdir(path):
             path = re.sub("/+$", "", path)
             path += "/" + os.path.basename(path) + ".pro"
-        parse_result, project_file_content = parseProFile(path, debug=False)
+        print(f'Analyzing "{path}"...')
+        file_contents = ""
+        with open(path, "r") as file_fd:
+            file_contents = file_fd.read()
+        parse_result, project_file_content = parseProFileContents(file_contents)
         scope = Scope.FromDict(None, path, parse_result.asDict().get("statements"))
         do_include(scope)
         recursive_evaluate_scope(scope)
