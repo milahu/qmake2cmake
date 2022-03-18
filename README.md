@@ -3,6 +3,24 @@
 This repository contains Python scripts to convert QMake projects to
 CMake projects.
 
+## Goals
+
+The qmake2cmake tool creates a `CMakeLists.txt` that covers the most common
+attributes of the converted `.pro` file.  The generated CMake project can be
+used as baseline and will most likely need manual adjustments.
+
+QMake constructs that cannot be converted end up in the CMake project as
+comment.
+
+## Non-goals
+
+The following QMake constructs are not converted:
+- `TEMPLATE = aux` projects
+- custom `.prf` files
+- extra compilers
+- extra targets
+- installation rules
+
 # Requirements
 
 * [Python 3.7](https://www.python.org/downloads/),
