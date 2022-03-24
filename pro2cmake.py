@@ -579,7 +579,7 @@ def write_add_qt_resource_call(
     params += f'{spaces(1)}PREFIX\n{spaces(2)}"{prefix}"\n'
     if base_dir:
         params += f'{spaces(1)}BASE\n{spaces(2)}"{base_dir}"\n'
-    add_resource_command = "qt6_add_resources"
+    add_resource_command = "qt_add_resources"
     output += (
         f'{add_resource_command}({target} "{resource_name}"\n{params}{spaces(1)}FILES\n'
         f"{spaces(2)}{file_list}\n)\n"
