@@ -1824,18 +1824,19 @@ def handle_subdir(
 
     # Parse the sub-project, and retrieve the information needed for the top-level find_package
     # calls.  This does not actually convert the file.
-    def extend_library_dependencies(path: str):
+    def extend_library_dependencies(subdir_path: str, current_pro_path: str):
         if is_sub_project or out_library_dependencies is None:
             return
-        if os.path.isdir(path):
-            path = re.sub("/+$", "", path)
-            path += "/" + os.path.basename(path) + ".pro"
-        print(f'Analyzing "{path}"...', flush=True)
+        write_subdir_marker(subdir_path, current_pro_path)
+        if os.path.isdir(subdir_path):
+            subdir_path = re.sub("/+$", "", subdir_path)
+            subdir_path += "/" + os.path.basename(subdir_path) + ".pro"
+        print(f'Analyzing "{subdir_path}"...', flush=True)
         file_contents = ""
-        with open(path, "r") as file_fd:
+        with open(subdir_path, "r") as file_fd:
             file_contents = file_fd.read()
         parse_result, project_file_content = parseProFileContents(file_contents)
-        scope = Scope.FromDict(None, path, parse_result.asDict().get("statements"))
+        scope = Scope.FromDict(None, subdir_path, parse_result.asDict().get("statements"))
         do_include(scope)
         recursive_evaluate_scope(scope)
         scopes = flatten_scopes(scope)
@@ -1855,7 +1856,9 @@ def handle_subdir(
                         all_subdirs.append(d)
             for sd in all_subdirs:
                 sd = apply_subdirs_modifiers(scope, sd)
-                extend_library_dependencies(os.path.dirname(scope.file) + "/" + sd)
+                extend_library_dependencies(
+                    os.path.dirname(scope.file) + "/" + sd, scope.file_absolute_path
+                )
 
     # Recursive helper that collects subdir info for given scope,
     # and the children of the given scope.
@@ -1875,8 +1878,7 @@ def handle_subdir(
                 collect_subdir_info(sd, current_conditions=current_conditions)
                 if sd.startswith("-"):
                     sd = sd[1:]
-                extend_library_dependencies(sd)
-                write_subdir_marker(sd, scope.file_absolute_path)
+                extend_library_dependencies(sd, scope.file_absolute_path)
             # For the file case, directly write into the file handle.
             elif os.path.isfile(sd):
                 # Handle cases with SUBDIRS += Foo/bar/z.pro. We want to be able
@@ -1886,8 +1888,7 @@ def handle_subdir(
                 dirname = os.path.dirname(sd)
                 if dirname:
                     collect_subdir_info(dirname, current_conditions=current_conditions)
-                    extend_library_dependencies(sd)
-                    write_subdir_marker(sd, scope.file_absolute_path)
+                    extend_library_dependencies(sd, scope.file_absolute_path)
                 else:
                     subdir_result, project_file_content = parseProFile(sd, debug=False)
                     subdir_scope = Scope.FromDict(
