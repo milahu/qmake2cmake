@@ -14,7 +14,7 @@ find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS Core5Compat)
 qt_add_executable(app WIN32 MACOSX_BUNDLE
     main.cpp
 )
-target_link_libraries(app PUBLIC
+target_link_libraries(app PRIVATE
     Qt::OpenGL
 )
 add_subdirectory(lib1)

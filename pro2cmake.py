@@ -4106,6 +4106,11 @@ def write_app_or_lib(
 
         (scope_public_libs, scope_private_libs) = extract_cmake_libraries(scope)
 
+        # assume only private target_link_libraries for applications and plugins
+        if scope.TEMPLATE == "app" or is_plugin:
+            scope_private_libs = scope_public_libs + scope_private_libs
+            scope_public_libs.clear()
+
         write_list(
             io_string,
             scope_private_libs,
