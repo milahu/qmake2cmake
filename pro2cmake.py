@@ -520,6 +520,20 @@ def write_resource_source_file_properties(
     return output
 
 
+def apply_base_dir_to_resource_files(scope: Scope, base_dir: str, files: Dict[str, str]):
+    if not base_dir:
+        return files
+
+    base_dir_expanded = scope.expandString(base_dir)
+    if base_dir_expanded:
+        base_dir = base_dir_expanded
+    new_files = {}
+    for file_path, alias in files.items():
+        full_file_path = posixpath.join(base_dir, file_path)
+        new_files[full_file_path] = alias
+    return new_files
+
+
 def write_add_qt_resource_call(
     target: str,
     scope: Scope,
@@ -532,16 +546,7 @@ def write_add_qt_resource_call(
 ) -> str:
     output = ""
 
-    if base_dir:
-        base_dir_expanded = scope.expandString(base_dir)
-        if base_dir_expanded:
-            base_dir = base_dir_expanded
-        new_files = {}
-        for file_path, alias in files.items():
-            full_file_path = posixpath.join(base_dir, file_path)
-            new_files[full_file_path] = alias
-        files = new_files
-
+    files = apply_base_dir_to_resource_files(scope, base_dir, files)
     sorted_files = sorted(files.keys())
     assert sorted_files
 
@@ -4364,13 +4369,15 @@ def write_qml_module(
             """
     )
 
+    resource_files: Dict[str, str] = {}
     if resource is not None:
-        qml_files = list(filter(is_qtquick_source_file, resource.files.keys()))
+        resource_files = apply_base_dir_to_resource_files(scope, resource.base_dir, resource.files)
+        qml_files = list(filter(is_qtquick_source_file, resource_files.keys()))
         if qml_files:
             content += "    QML_FILES\n"
             for file in qml_files:
                 content += f"        {file}\n"
-        other_files = list(itertools.filterfalse(is_qtquick_source_file, resource.files.keys()))
+        other_files = list(itertools.filterfalse(is_qtquick_source_file, resource_files.keys()))
         if other_files:
             content += "    RESOURCES\n"
             for file in other_files:
@@ -4412,8 +4419,8 @@ def write_qml_module(
 
     if resource:
         content += write_resource_source_file_properties(
-            sorted(resource.files.keys()),
-            resource.files,
+            sorted(resource_files),
+            resource_files,
             resource.base_dir,
             resource.skip_qtquick_compiler,
         )
