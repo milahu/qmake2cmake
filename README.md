@@ -39,12 +39,13 @@ that you can activate with a `pipenv shell`.
 
 ### Using `pip`
 
-It's highly recommended to use a [virtualenvironment](https://virtualenv.pypa.io/en/latest/)
-to avoid conflict with other packages that are already installed: `pip install virtualenv`.
+It's highly recommended to use a [virtual
+environment](https://docs.python.org/3/library/venv.html) to avoid
+conflicts with other packages that are already installed.
 
-* Create an environment: `virtualenv env`,
+* Create an environment: `python3 -m venv env --prompt qmake2cmake`,
 * Activate the environment: `source env/bin/activate`
-  (on Windows: `source env\Scripts\activate.bat`)
+  (on Windows: `env\Scripts\activate.bat`)
 * Install the requirements: `pip install -r requirements.txt`
 
 If the `pip install` command above doesn't work, try:
