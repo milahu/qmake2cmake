@@ -333,6 +333,7 @@ _qt_library_map = [
     ),
     LibraryMapping("webchannel", "Qt6", "Qt::WebChannel", components=["WebChannel"]),
     LibraryMapping("webengine", "Qt6", "Qt::WebEngine", components=["WebEngine"]),
+    LibraryMapping("webenginequick", "Qt6", "Qt::WebEngineQuick", components=["WebEngineQuick"]),
     LibraryMapping(
         "webenginewidgets", "Qt6", "Qt::WebEngineWidgets", components=["WebEngineWidgets"]
     ),
