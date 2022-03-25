@@ -408,7 +408,7 @@ class QtResource:
         name: str = "",
         prefix: str = "",
         base_dir: str = "",
-        files: Dict[str, str] = {},
+        files: Optional[Dict[str, str]] = None,
         lang: str = None,
         generated: bool = False,
         skip_qtquick_compiler: bool = False,
@@ -416,7 +416,10 @@ class QtResource:
         self.name = name
         self.prefix = prefix
         self.base_dir = base_dir
-        self.files = files
+        if files is None:
+            self.files = {}
+        else:
+            self.files = files
         self.lang = lang
         self.generated = generated
         self.skip_qtquick_compiler = skip_qtquick_compiler
