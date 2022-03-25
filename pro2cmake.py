@@ -4060,7 +4060,24 @@ def write_app_or_lib(
     cm_fh.write(")\n")
 
     if is_qml_module and not is_plugin:
-        write_qml_module(cm_fh, binary_name, scope, scopes, indent=indent, resource=qml_resource)
+        m = write_qml_module(
+            cm_fh, binary_name, scope, scopes, indent=indent, resource=qml_resource
+        )
+        if m["uri"] == binary_name and scope.TEMPLATE == "app":
+            cm_fh.write(
+                "# Avoid collision between executable name and QML module directory "
+                "(QTBUG-98568).\n"
+            )
+            cm_fh.write(f"if(NOT WIN32")
+            if property_mac_bundle:
+                cm_fh.write(f" AND NOT APPLE")
+            cm_fh.write(
+                f""")
+    set_property(TARGET {binary_name} PROPERTY OUTPUT_NAME {binary_name}_app)
+endif()
+
+"""
+            )
 
     handling_first_scope = True
 
@@ -4269,6 +4286,8 @@ def get_qml_import_version(scope: Scope, target: str) -> str:
     return import_version
 
 
+# Writes the qt_add_qml_module call. Return a dict with information about the QML module that is
+# interesting for the call site.
 def write_qml_module(
     cm_fh: IO[str],
     target: str,
@@ -4277,7 +4296,7 @@ def write_qml_module(
     resource: QtResource,
     extra_add_qml_module_args: List[str] = [],
     indent: int = 0,
-):
+) -> Dict[str, str]:
     uri = scope.get_string("QML_IMPORT_NAME")
     if not uri:
         uri = target
@@ -4398,6 +4417,7 @@ def write_qml_module(
 
     content += "\n"
     cm_fh.write(content)
+    return {"uri": uri}
 
 
 def write_qml_plugin(
