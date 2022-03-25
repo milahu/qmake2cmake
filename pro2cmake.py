@@ -4307,7 +4307,7 @@ def write_qml_module(
 ) -> Dict[str, str]:
     uri = scope.get_string("QML_IMPORT_NAME")
     if not uri:
-        uri = target
+        uri = re.sub("[^A-Za-z0-9]", "_", target)
 
     try:
         version = get_qml_import_version(scope, target)
