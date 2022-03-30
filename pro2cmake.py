@@ -4088,6 +4088,7 @@ endif()
             )
 
     handling_first_scope = True
+    prefer_private_visibility: bool = scope.TEMPLATE == "app" or is_plugin
 
     for scope in scopes:
         # write wayland already has condition scope handling
@@ -4114,17 +4115,20 @@ endif()
             io_string, scope, binary_name, handling_first_scope=handling_first_scope, indent=indent
         )
 
+        # make includes and defines PRIVATE for applications and plugins
+        visibility = "PRIVATE" if prefer_private_visibility else "PUBLIC"
+
         write_include_paths(
             io_string,
             scope,
-            f"target_include_directories({binary_name} PUBLIC",
+            f"target_include_directories({binary_name} {visibility}",
             indent=indent,
             footer=")\n",
         )
         write_defines(
             io_string,
             scope,
-            f"target_compile_definitions({binary_name} PUBLIC",
+            f"target_compile_definitions({binary_name} {visibility}",
             indent=indent,
             footer=")\n",
         )
@@ -4132,7 +4136,7 @@ endif()
         (scope_public_libs, scope_private_libs) = extract_cmake_libraries(scope)
 
         # assume only private target_link_libraries for applications and plugins
-        if scope.TEMPLATE == "app" or is_plugin:
+        if prefer_private_visibility:
             scope_private_libs = scope_public_libs + scope_private_libs
             scope_public_libs.clear()
 
