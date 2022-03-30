@@ -109,6 +109,8 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
         dir_name = os.path.dirname(pro_file)
         if dir_name == ".":
             dir_name = os.path.basename(os.getcwd())
+        elif dir_name.startswith("./"):
+            dir_name = os.path.basename(os.getcwd()) + "/" + dir_name[2:]
         if dir_name.endswith(pro_file_without_suffix):
             return dir_name
         return dir_name + "/__" + pro_file
