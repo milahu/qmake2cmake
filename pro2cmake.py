@@ -2029,6 +2029,7 @@ def handle_subdir(
             out_library_dependencies,
             indent=indent,
         )
+        cm_fh.write("\n")
 
     # Write add_subdirectory() calls.
     cm_fh.write(io_string.getvalue())
@@ -4021,12 +4022,11 @@ def write_app_or_lib(
             libdeps,
             indent=indent,
         )
+        cm_fh.write("\n")
 
     if out_library_dependencies is not None:
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
-
-    cm_fh.write("\n")
 
     (resources, standalone_qtquick_compiler_skipped_files) = extract_resources(binary_name, scope)
     qml_resource = find_qml_resource(resources) if is_qml_module else None
@@ -4857,8 +4857,6 @@ def generate_new_cmakelists(scope: Scope, *, debug: bool = False) -> None:
         print("Generating CMakeLists.gen.txt")
     with open(scope.generated_cmake_lists_path, "w") as cm_fh:
         assert scope.file
-        cm_fh.write(f"# Generated from {os.path.basename(scope.file)}.\n\n")
-
         cmakeify_scope(
             scope,
             cm_fh,
