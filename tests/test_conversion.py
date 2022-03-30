@@ -221,3 +221,19 @@ qt_add_qml_module(plugin_qml_module
 target_sources(plugin_qml_module PRIVATE
     donkeyengine.cpp donkeyengine.h
 )""" in output)
+
+def test_install_commands():
+    output = convert("app_install")
+    assert(r"""
+install(TARGETS app_install
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)""" in output)
+
+    output = convert("lib_install")
+    assert(r"""
+install(TARGETS lib_install
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)""" in output)

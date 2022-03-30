@@ -3,7 +3,19 @@ project(subdirs VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# Set up AUTOMOC and some sensible defaults for runtime execution
+# When using Qt 6.3, you can replace the code block below with qt_standard_project_setup.
 set(CMAKE_AUTOMOC ON)
+include(GNUInstallDirs)
+if(WIN32)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+elseif(NOT APPLE)
+    file(RELATIVE_PATH qt_relative_lib_dir_from_bin_dir
+        ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}
+    )
+    list(APPEND CMAKE_INSTALL_RPATH $ORIGIN $ORIGIN/${qt_relative_lib_dir_from_bin_dir})
+endif()
 
 find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Network OpenGL)
@@ -14,6 +26,12 @@ qt_add_executable(app WIN32 MACOSX_BUNDLE
 )
 target_link_libraries(app PRIVATE
     Qt::OpenGL
+)
+
+# When using Qt 6.3, check out qt_generate_deploy_app_script for app deployment
+install(TARGETS app
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 add_subdirectory(lib1)
 add_subdirectory(lib2)

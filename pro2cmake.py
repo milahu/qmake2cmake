@@ -3975,10 +3975,26 @@ def write_example_top_level_prelude(
 ) -> None:
     project_version = scope.get_string("VERSION", "1.0")
     cm_fh.write(
-        f"cmake_minimum_required(VERSION {cmake_version_string})\n"
-        f"project({project_name} VERSION {project_version} LANGUAGES CXX)\n\n"
-        "set(CMAKE_INCLUDE_CURRENT_DIR ON)\n\n"
-        "set(CMAKE_AUTOMOC ON)\n"
+        f"""\
+cmake_minimum_required(VERSION {cmake_version_string})
+project({project_name} VERSION {project_version} LANGUAGES CXX)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+# Set up AUTOMOC and some sensible defaults for runtime execution
+# When using Qt 6.3, you can replace the code block below with qt_standard_project_setup.
+set(CMAKE_AUTOMOC ON)
+include(GNUInstallDirs)
+if(WIN32)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${{CMAKE_CURRENT_BINARY_DIR}})
+elseif(NOT APPLE)
+    file(RELATIVE_PATH qt_relative_lib_dir_from_bin_dir
+        ${{CMAKE_CURRENT_BINARY_DIR}}/${{CMAKE_INSTALL_BINDIR}}
+        ${{CMAKE_CURRENT_BINARY_DIR}}/${{CMAKE_INSTALL_LIBDIR}}
+    )
+    list(APPEND CMAKE_INSTALL_RPATH $ORIGIN $ORIGIN/${{qt_relative_lib_dir_from_bin_dir}})
+endif()
+"""
     )
     if scope.get_files("FORMS"):
         cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
@@ -4090,6 +4106,10 @@ endif()
     handling_first_scope = True
     prefer_private_visibility: bool = scope.TEMPLATE == "app" or is_plugin
 
+    # Keep the main scope around, because it gets redefined in the
+    # following loop
+    main_scope = scope
+
     for scope in scopes:
         # write wayland already has condition scope handling
         write_wayland_part(cm_fh, binary_name, scope, indent=0)
@@ -4190,7 +4210,49 @@ endif()
 
         handling_first_scope = False
 
+    write_install_commands(cm_fh, main_scope)
+
     return binary_name
+
+
+def write_install_commands(cm_fh: IO[str], scope: Scope):
+    binary_name = scope.TARGET
+    assert binary_name
+
+    install_options = []
+
+    if scope.TEMPLATE == "app":
+        # Install Apple executable bundles directly into
+        # CMAKE_INSTALL_PREFIX
+        bundle_destination_option = "    BUNDLE DESTINATION ."
+        install_options.append(bundle_destination_option)
+    else:
+        # shared (except Windows) and static libraries go into ./lib
+        library_destination_option = "    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}"
+        framework_destination_option = "    FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}"
+        install_options.append(library_destination_option)
+        install_options.append(framework_destination_option)
+
+    # Windows dlls go into ./bin
+    # regular non-Apple-bundle executables go into ./bin
+    runtime_destination_option = "    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}"
+    install_options.append(runtime_destination_option)
+
+    install_options_str = "\n".join(install_options)
+
+    app_deploy_script_comment = ""
+    if scope.TEMPLATE == "app":
+        app_deploy_script_comment = """
+# When using Qt 6.3, check out qt_generate_deploy_app_script for app deployment\
+"""
+
+    cm_fh.write(
+        f"""{app_deploy_script_comment}
+install(TARGETS {binary_name}
+{install_options_str}
+)
+"""
+    )
 
 
 def write_plugin(cm_fh, scope, *, indent: int = 0) -> str:
