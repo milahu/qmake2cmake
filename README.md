@@ -79,18 +79,17 @@ run_qmake2cmake ~/projects/myapp --min-qt-version 6.3
 
 # Contributing to the scripts
 
-You can verify if the styling of a script is compliant with PEP8, with a couple of exceptions:
-
-Install [flake8](http://flake8.pycqa.org/en/latest/) (`pip install flake8`) and run it
-on all python source files:
+You can run the linter (`mypy`), code-style checkers (`flake8`, `black`)
+and tests (`pytest`) by executing:
 
 ```
-make flake8
+make test
 ```
 
-You can also modify the file with an automatic formatter,
-like [black](https://black.readthedocs.io/en/stable/) (`pip install black`),
-and execute it:
+There are also separate make targets for each of those `make mypy`, `make flake8`,
+`make black_format_check`, `make pytest`.
+
+You can auto-format the code using [black](https://black.readthedocs.io/en/stable/):
 
 ```
 make format
