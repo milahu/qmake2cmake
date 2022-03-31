@@ -58,19 +58,23 @@ python3.7 -m pip install -r requirements.txt
 
 The following call converts a single QMake project file to CMake:
 ```
-qmake2cmake ~/projects/myapp/myapp.pro
+qmake2cmake ~/projects/myapp/myapp.pro --min-qt-version 6.3
 ```
+
+It's necessary to specify a minimum Qt version the project is supposed
+to be built with. Use the `--min-qt-version` option or the
+environment variable `QMAKE2CMAKE_MIN_QT_VERSION`.
 
 By default, a `CMakeLists.txt` is placed next to the `.pro` file.
 
 To generate `CMakeLists.txt` in a different location, use the `-o` option:
 ```
-qmake2cmake ~/projects/myapp/myapp.pro -o ~/projects/myapp-converted/CMakeLists.txt
+qmake2cmake ~/projects/myapp/myapp.pro --min-qt-version 6.3 -o ~/projects/myapp-converted/CMakeLists.txt
 ```
 
 To convert a whole project tree, pass the project directory to `run_qmake2cmake`:
 ```
-run_qmake2cmake ~/projects/myapp
+run_qmake2cmake ~/projects/myapp --min-qt-version 6.3
 ```
 
 # Contributing to the scripts
