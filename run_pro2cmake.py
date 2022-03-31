@@ -47,6 +47,12 @@ def parse_command_line() -> argparse.Namespace:
         "-- --foo --bar"
     )
     parser.add_argument(
+        "--min-qt-version",
+        dest="min_qt_version",
+        action="store",
+        help="Specify the minimum Qt version for the converted project.",
+    )
+    parser.add_argument(
         "--only-existing",
         dest="only_existing",
         action="store_true",
@@ -249,6 +255,8 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         if sys.platform == "win32":
             pro2cmake_args.append(sys.executable)
         pro2cmake_args.append(pro2cmake)
+        if args.min_qt_version:
+            pro2cmake_args += ["--min-qt-version", args.min_qt_version]
         if args.skip_subdirs_projects:
             pro2cmake_args.append("--skip-subdirs-project")
         pro2cmake_args.append(os.path.basename(filename))

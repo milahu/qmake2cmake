@@ -54,7 +54,10 @@ def compare_expected_output_directories(actual: str, expected: str):
     assert(dc.diff_files == [])
 
 
-def convert(base_name: str, after_conversion_hook: Optional[Callable[[str], None]] = None):
+def convert(base_name: str,
+            *,
+            min_qt_version: str = "6.2.0",
+            after_conversion_hook: Optional[Callable[[str], None]] = None):
     '''Converts {base_name}.pro to CMake in a temporary directory.
 
     The optional after_conversion_hook is a function that takes the temporary directory as
@@ -66,7 +69,8 @@ def convert(base_name: str, after_conversion_hook: Optional[Callable[[str], None
     with TemporaryDirectory(prefix="testqmake2cmake") as tmp_dir_str:
         tmp_dir = pathlib.Path(tmp_dir_str)
         output_file_path = tmp_dir.joinpath("CMakeLists.txt")
-        exit_code = subprocess.call([qmake2cmake, "-o", output_file_path, pro_file_path])
+        exit_code = subprocess.call([qmake2cmake, "-o", output_file_path, pro_file_path,
+                                     "--min-qt-version", min_qt_version])
         assert(exit_code == 0)
         if debug_mode:
             output_dir = tempfile.gettempdir() + "/qmake2cmake"
@@ -84,8 +88,9 @@ def convert(base_name: str, after_conversion_hook: Optional[Callable[[str], None
 
 def convert_and_compare_expected_output(pro_base_name: str, rel_expected_output_dir: str):
     abs_expected_output_dir = test_data_dir.joinpath(rel_expected_output_dir)
-    convert(pro_base_name, functools.partial(compare_expected_output_directories,
-                                             expected=abs_expected_output_dir))
+    convert(pro_base_name,
+            after_conversion_hook=functools.partial(compare_expected_output_directories,
+                                                    expected=abs_expected_output_dir))
 
 
 def test_qt_modules():

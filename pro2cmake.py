@@ -54,6 +54,7 @@ from textwrap import dedent
 from functools import lru_cache
 from shutil import copyfile
 from collections import defaultdict
+from packaging import version
 from typing import (
     List,
     Optional,
@@ -84,12 +85,19 @@ from helper import (
 
 cmake_version_string = "3.16"
 cmake_api_version = 3
+min_qt_version = version.parse("1.0.0")
 
 
 def _parse_commandline():
     parser = ArgumentParser(
         description="Generate CMakeLists.txt files from ." "pro files.",
         epilog="Requirements: pip install -r requirements.txt",
+    )
+    parser.add_argument(
+        "--min-qt-version",
+        dest="min_qt_version",
+        action="store",
+        help="Specify the minimum Qt version for the converted project.",
     )
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Turn on all debug output"
@@ -3980,14 +3988,26 @@ cmake_minimum_required(VERSION {cmake_version_string})
 project({project_name} VERSION {project_version} LANGUAGES CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
+"""
+    )
+    global min_qt_version
+    if min_qt_version < version.parse("6.3"):
+        cm_fh.write(
+            """
 # Set up AUTOMOC and some sensible defaults for runtime execution
 # When using Qt 6.3, you can replace the code block below with
 # qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 """
-    )
+        )
+    else:
+        cm_fh.write(
+            """
+qt_standard_project_setup()
+"""
+        )
+
     if scope.get_files("FORMS"):
         cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
     cm_fh.write("\n")
@@ -5045,6 +5065,19 @@ def main() -> None:
     assert sys.version_info >= (3, 7)
 
     args = _parse_commandline()
+
+    global min_qt_version
+    if args.min_qt_version:
+        min_qt_version = version.parse(args.min_qt_version)
+    elif os.getenv("QMAKE2CMAKE_MIN_QT_VERSION"):
+        min_qt_version = version.parse(os.environ["QMAKE2CMAKE_MIN_QT_VERSION"])
+    else:
+        raise RuntimeError(
+            "Please specify the minimum Qt version either with --min-qt-version or the environment variable QMAKE2CMAKE_MIN_QT_VERSION."
+        )
+
+    if not isinstance(min_qt_version, version.Version):
+        raise ValueError("Specified minimum Qt version is invalid.")
 
     debug_parsing = args.debug_parser or args.debug
     if args.skip_condition_cache:
