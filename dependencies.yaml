@@ -1,0 +1,2 @@
+# Make sure we have an empty list of dependencies, so we don't trigger building Qt deps in CI
+dependencies: {}

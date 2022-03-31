@@ -1,0 +1,53 @@
+version: 2
+accept_configuration:
+  condition: property
+  property: features
+  not_contains_value: Disable
+
+instructions:
+  Build:
+    - !include "{{qt/qmake2cmake}}/prepare_env.yaml"
+
+    # Create a virtual environment
+    - type: ExecuteCommand
+      command: "{{.Env.CI_PYTHON_EXECUTABLE}} -m venv env --prompt ci_env_qmake2cmake"
+      ignoreExitCode: false
+      maxTimeInSeconds: 7200
+      maxTimeBetweenOutput: 900
+      userMessageOnFailure: >
+        python3 -m venv env failed.
+
+    # Add the virtualenv bin / Scripts dir to PATH, so the virtual env pip is used and
+    # also for make to find the tools it needs
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "{{.BuildDir}}{{.Env.CI_PATH_SEP}}env{{.Env.CI_PATH_SEP}}bin:"
+      disable_if:
+        condition: property
+        property: host.os
+        equals_value: Windows
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "{{.BuildDir}}{{.Env.CI_PATH_SEP}}env{{.Env.CI_PATH_SEP}}Scripts;"
+      enable_if:
+        condition: property
+        property: host.os
+        equals_value: Windows
+
+    # Install dependencies
+    - type: ExecuteCommand
+      command: "pip{{.Env.CI_EXECUTABLE_SUFFIX}} install -r requirements.txt"
+      ignoreExitCode: false
+      maxTimeInSeconds: 7200
+      maxTimeBetweenOutput: 900
+      userMessageOnFailure: >
+        pip install requirements failed.
+
+    # Run style checker, linter, tests
+    - type: ExecuteCommand
+      command: "{{.Env.CI_MAKE_TOOL}} test"
+      ignoreExitCode: false
+      maxTimeInSeconds: 7200
+      maxTimeBetweenOutput: 900
+      userMessageOnFailure: >
+        qmake2cmake make test failed.

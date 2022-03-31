@@ -1,0 +1,97 @@
+type: Group
+instructions:
+  # Set path separator based on host platform.
+  # \ on Windows (double \\ for escaping the backslash)
+  # / on UNIX
+  - type: EnvironmentVariable
+    variableName: CI_PATH_SEP
+    variableValue: "\\"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+  - type: EnvironmentVariable
+    variableName: CI_PATH_SEP
+    variableValue: "/"
+    disable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+
+  # Windows .exe suffix
+  - type: EnvironmentVariable
+    variableName: CI_EXECUTABLE_SUFFIX
+    variableValue: ".exe"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+
+  # Find jom
+  - type: AppendToEnvironmentVariable
+    variableName: PATH
+    variableValue: ;%CI_JOM_PATH%
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+
+  # Adjust PATH to find appropriate Python 3 for macOS and Windows
+  - type: PrependToEnvironmentVariable
+    variableName: PATH
+    variableValue: "{{.Env.PYTHON3_PATH}}/bin:"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: MacOS
+  - type: PrependToEnvironmentVariable
+    variableName: PATH
+    variableValue: "${PYTHON3.8.1-64_PATH};"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+
+  # Set python executable name depending on host OS
+  - type: EnvironmentVariable
+    variableName: CI_PYTHON_EXECUTABLE
+    variableValue: "python.exe"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+  - type: EnvironmentVariable
+    variableName: CI_PYTHON_EXECUTABLE
+    variableValue: "python3.8"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Linux
+  - type: EnvironmentVariable
+    variableName: CI_PYTHON_EXECUTABLE
+    variableValue: "python3"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: MacOS
+
+  # Set make tool
+  - type: EnvironmentVariable
+    variableName: CI_MAKE_TOOL
+    variableValue: "jom"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+  - type: EnvironmentVariable
+    variableName: CI_MAKE_TOOL
+    variableValue: "make"
+    disable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+
+  # Clear the multiple -j flags, to avoid the make output being inter-leaved
+  - type: EnvironmentVariable
+    variableName: MAKEFLAGS
+    variableValue: ""
