@@ -5,4 +5,5 @@ pyparsing; python_version >= '3.7'
 sympy; python_version >= '3.7'
 portalocker; python_version >= '3.7'
 black; python_version >= '3.7'
+flake8; python_version >= '3.7'
 
