@@ -295,7 +295,9 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
 
     # Convert the main .pro file first to create the subdir markers.
     print(f"Converting the main project file {main_file}")
-    _process_a_file((main_file, 0, 1), direct_output=True)
+    exit_code = _process_a_file((main_file, 0, 1), direct_output=True)[0]
+    if exit_code != 0:
+        return [main_file]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers, initargs=(10,)) as pool:
         print("Firing up thread pool executor.")
