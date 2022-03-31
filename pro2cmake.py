@@ -510,7 +510,7 @@ def write_resource_source_file_properties(
         # If a base dir is given, we have to write the source file property
         # assignments that disable the quick compiler per file.
         if base_dir and skip_qtquick_compiler:
-            source_file_properties[source].append("QT_SKIP_QUICKCOMPILER 1")
+            source_file_properties[source].append("QT_QML_SKIP_CACHEGEN 1")
 
     for full_source in source_file_properties:
         per_file_props = source_file_properties[full_source]
@@ -583,7 +583,7 @@ def write_add_qt_resource_call(
     if skip_qtquick_compiler and not base_dir:
         output += (
             f"set_source_files_properties(${{{resource_name}_resource_files}}"
-            " PROPERTIES QT_SKIP_QUICKCOMPILER 1)\n\n"
+            " PROPERTIES QT_QML_SKIP_CACHEGEN 1)\n\n"
         )
 
     prefix_expanded = scope.expandString(str(prefix))
@@ -2664,7 +2664,7 @@ def write_resources(
     if skipped_standalone_files:
         for f in skipped_standalone_files:
             qrc_output += (
-                f'set_source_files_properties("{f}" PROPERTIES ' f"QT_SKIP_QUICKCOMPILER 1)\n\n"
+                f'set_source_files_properties("{f}" PROPERTIES ' f"QT_QML_SKIP_CACHEGEN 1)\n\n"
             )
 
     if qrc_output:
