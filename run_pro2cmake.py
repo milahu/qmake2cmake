@@ -78,6 +78,12 @@ def parse_command_line() -> argparse.Namespace:
         "directory.",
     )
     parser.add_argument(
+        "--main-file",
+        dest="main_file",
+        action="store",
+        help="Specify the name of the main .pro file in <path>.",
+    )
+    parser.add_argument(
         "--count", dest="count", help="How many projects should be converted.", type=int
     )
     parser.add_argument(
@@ -270,10 +276,18 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
             output_result = stdout + result.stdout.decode()
         return result.returncode, filename, output_result
 
+    # Determine the main .pro file.
+    if args.main_file:
+        main_file = os.path.join(args.path, args.main_file)
+        if not os.path.isfile(main_file):
+            raise FileNotFoundError(f"Specified main .pro file '{main_file}' cannot be found.")
+    else:
+        main_file = all_files[0]
+        all_files = all_files[1:]
+
     # Convert the main .pro file first to create the subdir markers.
-    print(f"Converting the main project file {all_files[0]}")
-    _process_a_file((all_files[0], 0, 1), direct_output=True)
-    all_files = all_files[1:]
+    print(f"Converting the main project file {main_file}")
+    _process_a_file((main_file, 0, 1), direct_output=True)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers, initargs=(10,)) as pool:
         print("Firing up thread pool executor.")
