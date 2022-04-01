@@ -4231,6 +4231,7 @@ endif()
         handling_first_scope = False
 
     write_install_commands(cm_fh, main_scope)
+    write_deploy_app_commands(cm_fh, main_scope)
 
     return binary_name
 
@@ -4260,19 +4261,55 @@ def write_install_commands(cm_fh: IO[str], scope: Scope):
 
     install_options_str = "\n".join(install_options)
 
-    app_deploy_script_comment = ""
-    if scope.TEMPLATE == "app":
-        app_deploy_script_comment = """
-# When using Qt 6.3, check out qt_generate_deploy_app_script for app deployment\
-"""
-
     cm_fh.write(
-        f"""{app_deploy_script_comment}
+        f"""
 install(TARGETS {binary_name}
 {install_options_str}
 )
 """
     )
+
+
+def write_deploy_app_commands(cm_fh: IO[str], scope: Scope):
+    # Currently, there is no deployment API available for libraries
+    if scope.TEMPLATE != "app":
+        return
+
+    global min_qt_version
+    if min_qt_version < version.parse("6.3"):
+        app_deploy_ad = """
+# Consider using qt_generate_deploy_app_script() for app deployment if
+# the project can use Qt 6.3. In that case rerun qmake2cmake with
+# --min-qt-version=6.3.
+"""
+        cm_fh.write(app_deploy_ad)
+        return
+
+    binary_name = scope.TARGET
+    assert binary_name
+
+    config = scope.get("CONFIG")
+    is_qml_module = ("qml" in scope.get("QT")) or "qmltypes" in config
+
+    if is_qml_module:
+        deploy_command = "qt_generate_deploy_qml_app_script"
+        extra_options = """
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+    MACOS_BUNDLE_POST_BUILD"""
+    else:
+        deploy_command = "qt_generate_deploy_app_script"
+        extra_options = ""
+
+    app_deploy_commands = f"""
+{deploy_command}(
+    TARGET {binary_name}
+    FILENAME_VARIABLE deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR{extra_options}
+)
+install(SCRIPT ${{deploy_script}})
+"""
+
+    cm_fh.write(app_deploy_commands)
 
 
 def write_plugin(cm_fh, scope, *, indent: int = 0) -> str:

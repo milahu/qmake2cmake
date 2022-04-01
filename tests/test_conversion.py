@@ -227,6 +227,7 @@ target_sources(plugin_qml_module PRIVATE
     donkeyengine.cpp donkeyengine.h
 )""" in output)
 
+
 def test_install_commands():
     output = convert("app_install")
     assert(r"""
@@ -242,3 +243,41 @@ install(TARGETS lib_install
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )""" in output)
+
+
+def test_deploy_commands():
+    output = convert("app", min_qt_version="6.2")
+    assert(r"""
+# Consider using qt_generate_deploy_app_script() for app deployment if
+# the project can use Qt 6.3. In that case rerun qmake2cmake with
+# --min-qt-version=6.3.
+""" in output)
+
+    output = convert("app", min_qt_version="6.3")
+    assert(r"""
+qt_generate_deploy_app_script(
+    TARGET app
+    FILENAME_VARIABLE deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${deploy_script})
+""" in output)
+
+    output = convert("app_qml_module", min_qt_version="6.2")
+    assert(r"""
+# Consider using qt_generate_deploy_app_script() for app deployment if
+# the project can use Qt 6.3. In that case rerun qmake2cmake with
+# --min-qt-version=6.3.
+""" in output)
+
+    output = convert("app_qml_module", min_qt_version="6.3")
+    assert(r"""
+qt_generate_deploy_qml_app_script(
+    TARGET myapp
+    FILENAME_VARIABLE deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+    MACOS_BUNDLE_POST_BUILD
+)
+install(SCRIPT ${deploy_script})
+""" in output)
