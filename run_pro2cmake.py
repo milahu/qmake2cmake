@@ -252,8 +252,7 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
     ) -> typing.Tuple[int, str, str]:
         filename, index, total = data
         pro2cmake_args = []
-        if sys.platform == "win32":
-            pro2cmake_args.append(sys.executable)
+        pro2cmake_args.append(sys.executable)
         pro2cmake_args.append(pro2cmake)
         if args.min_qt_version:
             pro2cmake_args += ["--min-qt-version", args.min_qt_version]
