@@ -94,3 +94,37 @@ You can auto-format the code using [black](https://black.readthedocs.io/en/stabl
 ```
 make format
 ```
+
+
+# Releasing a new version
+
+Increase the version number in `setup.py` according to semantic versioning 2.0.
+
+For building and uploading `qmake2cmake` you will need the Python
+modules `build` and `twine`.
+
+Build the wheel:
+```
+$ python -m build
+```
+
+Upload to testpypi:
+```
+$ twine upload --repository testpypi dist/<wheel-name>
+```
+
+Install the uploaded wheel in a fresh venv:
+```
+$ python -m venv fresh && . ./fresh/bin/activate
+(fresh)$ pip install -i https://testpypi.python.org/pypi qmake2cmake --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple
+
+```
+
+If the installation succeeded, try to convert something.
+If everything is bueno, upload the wheel to production pypi.
+
+```
+$ twine upload --repository pypi dist/<wheel-name>
+```
+
+It is advisable to try out this wheel in another fresh venv.
