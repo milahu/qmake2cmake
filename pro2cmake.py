@@ -1945,6 +1945,8 @@ def handle_subdir(
         # subdirectories with the same conditions.
         grouped_sub_dirs: Dict[str, List[str]] = {}
 
+        sub_io_string = io.StringIO()
+
         # Wraps each element in the given interable with parentheses,
         # to make sure boolean simplification happens correctly.
         def wrap_in_parenthesis(iterable):
@@ -1995,21 +1997,27 @@ def handle_subdir(
             grouped_sub_dirs[condition_key] = sub_dir_list_by_key
 
         # Print any requires() blocks.
-        cm_fh.write(expand_project_requirements(scope, skip_message=True))
+        sub_io_string.write(expand_project_requirements(scope, skip_message=True))
 
         # Print the groups.
         ind = spaces(indent)
         for condition_key in grouped_sub_dirs:
             cond_ind = ind
             if condition_key:
-                cm_fh.write(f"{ind}if({condition_key})\n")
+                sub_io_string.write(f"{ind}if({condition_key})\n")
                 cond_ind += "    "
 
             sub_dir_list_by_key = grouped_sub_dirs.get(condition_key, [])
             for subdir_name in sub_dir_list_by_key:
-                cm_fh.write(f"{cond_ind}add_subdirectory({subdir_name})\n")
+                sub_io_string.write(f"{cond_ind}add_subdirectory({subdir_name})\n")
             if condition_key:
-                cm_fh.write(f"{ind}endif()\n")
+                sub_io_string.write(f"{ind}endif()\n")
+
+        # Prepend a link break if none exists
+        sub_io_content = sub_io_string.getvalue()
+        if sub_io_content and not sub_io_content.startswith("\n"):
+            sub_io_content = "\n" + sub_io_content
+        cm_fh.write(sub_io_content)
 
     # A set of conditions which will be ANDed together. The set is recreated with more conditions
     # as the scope deepens.

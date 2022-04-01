@@ -25,6 +25,7 @@ install(TARGETS app
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
 add_subdirectory(lib1)
 add_subdirectory(lib2)
 add_subdirectory(lib3)
