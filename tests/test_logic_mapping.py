@@ -27,7 +27,7 @@
 ##
 #############################################################################
 
-from condition_simplifier import simplify_condition
+from qmake2cmake.condition_simplifier import simplify_condition
 
 
 def validate_simplify(input: str, expected: str) -> None:

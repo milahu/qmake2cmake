@@ -28,9 +28,9 @@
 #############################################################################
 
 import os
-from pro2cmake import map_condition
-from qmake_parser import QmakeParser
-from condition_simplifier import simplify_condition
+from qmake2cmake.pro2cmake import map_condition
+from qmake2cmake.qmake_parser import QmakeParser
+from qmake2cmake.condition_simplifier import simplify_condition
 
 
 _tests_path = os.path.dirname(os.path.abspath(__file__))

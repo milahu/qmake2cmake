@@ -54,7 +54,18 @@ If the `pip install` command above doesn't work, try:
 python3.7 -m pip install -r requirements.txt
 ```
 
+# Installation
+
+You can install the package directly via `pip install qmake2cmake`.
+
+In case you are developing a new feature or want to install the latest
+repository version, do an editable build by running `pip install -e .`
+
 # Usage
+
+After installing the `qmake2cmake` package, two scripts will be
+available in your bin/ directory of your Python environment:
+`qmake2cmake` and `run_qmake2cmake`.
 
 The following call converts a single QMake project file to CMake:
 ```

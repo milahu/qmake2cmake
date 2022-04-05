@@ -27,7 +27,7 @@
 ##
 #############################################################################
 
-from pro2cmake import AddOperation, SetOperation, UniqueAddOperation, RemoveOperation
+from qmake2cmake.pro2cmake import AddOperation, SetOperation, UniqueAddOperation, RemoveOperation
 
 def test_add_operation():
     op = AddOperation(['bar', 'buz'])

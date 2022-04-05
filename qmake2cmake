@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-# This script is not packaged in the qmake2cmake wheel.
-# It's only purpose is to provide a convenience wrapper for people who clone the repository.
-# Do not add any logic that goes beyond calling the python module with arguments.
-script_dir_path=`dirname $0`
-script_dir_path=`(cd "$script_dir_path"; /bin/pwd)`
-python3 $script_dir_path/pro2cmake.py $@

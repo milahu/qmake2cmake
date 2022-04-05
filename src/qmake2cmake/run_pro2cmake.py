@@ -35,9 +35,9 @@ import collections
 import sys
 import typing
 import argparse
-import qmake_parser
+from qmake2cmake.qmake_parser import parseProFileContents
 from argparse import ArgumentParser
-from pro2cmake import do_include, Scope
+from qmake2cmake.pro2cmake import do_include, Scope
 
 
 def parse_command_line() -> argparse.Namespace:
@@ -183,7 +183,7 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
 
     def is_subdirs_project(file_path):
         file_contents = read_file_contents(file_path)
-        parse_result, massaged_file_contents = qmake_parser.parseProFileContents(file_contents)
+        parse_result, massaged_file_contents = parseProFileContents(file_contents)
         file_scope = Scope.FromDict(
             None,
             file_path,

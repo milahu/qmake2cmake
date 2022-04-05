@@ -27,7 +27,7 @@
 ##
 #############################################################################
 
-from pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
+from qmake2cmake.pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
 
 import pytest
 import typing

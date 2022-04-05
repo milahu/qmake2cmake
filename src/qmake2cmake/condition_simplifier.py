@@ -30,7 +30,7 @@
 
 import re
 from sympy import simplify_logic, And, Or, Not, SympifyError  # type: ignore
-from condition_simplifier_cache import simplify_condition_memoize
+from qmake2cmake.condition_simplifier_cache import simplify_condition_memoize
 
 
 def _iterate_expr_tree(expr, op, matches):

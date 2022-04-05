@@ -43,8 +43,8 @@ import itertools
 import glob
 import fnmatch
 
-from condition_simplifier import simplify_condition
-from condition_simplifier_cache import set_condition_simplified_cache_enabled
+from qmake2cmake.condition_simplifier import simplify_condition
+from qmake2cmake.condition_simplifier_cache import set_condition_simplified_cache_enabled
 
 import pyparsing as pp  # type: ignore
 import xml.etree.ElementTree as ET
@@ -70,9 +70,9 @@ from typing import (
     Type,
 )
 
-from qmake_parser import parseProFile, parseProFileContents
-from special_case_helper import SpecialCaseHandler
-from helper import (
+from qmake2cmake.qmake_parser import parseProFile, parseProFileContents
+from qmake2cmake.special_case_helper import SpecialCaseHandler
+from qmake2cmake.helper import (
     map_qt_library,
     map_3rd_party_library,
     is_known_3rd_party_library,
@@ -88,7 +88,7 @@ cmake_api_version = 3
 min_qt_version = version.parse("1.0.0")
 
 
-def _parse_commandline():
+def _parse_commandline(command_line_args: Optional[List[str]] = None):
     parser = ArgumentParser(
         description="Generate CMakeLists.txt files from ." "pro files.",
         epilog="Requirements: pip install -r requirements.txt",
@@ -194,7 +194,7 @@ def _parse_commandline():
         nargs="+",
         help="The .pro/.pri file to process",
     )
-    return parser.parse_args()
+    return parser.parse_args(command_line_args)
 
 
 def get_top_level_repo_project_path(project_file_path: str = "") -> str:
@@ -5105,11 +5105,11 @@ def should_convert_project_after_parsing(
     return True
 
 
-def main() -> None:
+def main(command_line_args: Optional[List[str]] = None) -> None:
     # Be sure of proper Python version
     assert sys.version_info >= (3, 7)
 
-    args = _parse_commandline()
+    args = _parse_commandline(command_line_args)
 
     global min_qt_version
     if args.min_qt_version:

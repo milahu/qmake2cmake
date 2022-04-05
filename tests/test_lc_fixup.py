@@ -27,7 +27,7 @@
 ##
 #############################################################################
 
-from qmake_parser import fixup_linecontinuation
+from qmake2cmake.qmake_parser import fixup_linecontinuation
 
 
 def test_no_change():

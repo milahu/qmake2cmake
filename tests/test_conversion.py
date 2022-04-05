@@ -27,7 +27,8 @@
 ##
 #############################################################################
 
-from pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
+from qmake2cmake.pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
+from qmake2cmake.pro2cmake import main as convert_qmake_to_cmake
 from tempfile import TemporaryDirectory
 
 import filecmp
@@ -37,15 +38,13 @@ import pathlib
 import pytest
 import re
 import shutil
-import subprocess
+import sys
 import tempfile
 
 from typing import Callable, Optional
 
 debug_mode = bool(os.environ.get("DEBUG_QMAKE2CMAKE_TEST_CONVERSION"))
 test_script_dir = pathlib.Path(__file__).parent.resolve()
-qmake2cmake_dir = test_script_dir.parent.resolve()
-qmake2cmake = qmake2cmake_dir.joinpath("qmake2cmake")
 test_data_dir = test_script_dir.joinpath("data", "conversion")
 
 
@@ -69,9 +68,8 @@ def convert(base_name: str,
     with TemporaryDirectory(prefix="testqmake2cmake") as tmp_dir_str:
         tmp_dir = pathlib.Path(tmp_dir_str)
         output_file_path = tmp_dir.joinpath("CMakeLists.txt")
-        exit_code = subprocess.call([qmake2cmake, "-o", output_file_path, pro_file_path,
-                                     "--min-qt-version", min_qt_version])
-        assert(exit_code == 0)
+        convert_qmake_to_cmake(["-o", str(output_file_path), str(pro_file_path),
+                                "--min-qt-version", min_qt_version])
         if debug_mode:
             output_dir = tempfile.gettempdir() + "/qmake2cmake"
             if not os.path.isdir(output_dir):

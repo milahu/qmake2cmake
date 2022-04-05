@@ -1,1 +1,5 @@
 .pro2cmake_cache/
+__pycache__
+.qmake2cmake
+*.egg-info
+.coverage

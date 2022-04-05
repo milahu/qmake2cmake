@@ -35,7 +35,7 @@ from typing import Tuple
 
 import pyparsing as pp  # type: ignore
 
-from helper import _set_up_py_parsing_nicer_debug_output
+from qmake2cmake.helper import _set_up_py_parsing_nicer_debug_output
 
 _set_up_py_parsing_nicer_debug_output(pp)
 
