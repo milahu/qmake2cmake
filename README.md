@@ -65,7 +65,7 @@ repository version, do an editable build by running `pip install -e .`
 
 After installing the `qmake2cmake` package, two scripts will be
 available in your bin/ directory of your Python environment:
-`qmake2cmake` and `run_qmake2cmake`.
+`qmake2cmake` and `qmake2cmake_all`.
 
 The following call converts a single QMake project file to CMake:
 ```
@@ -83,9 +83,9 @@ To generate `CMakeLists.txt` in a different location, use the `-o` option:
 qmake2cmake ~/projects/myapp/myapp.pro --min-qt-version 6.3 -o ~/projects/myapp-converted/CMakeLists.txt
 ```
 
-To convert a whole project tree, pass the project directory to `run_qmake2cmake`:
+To convert a whole project tree, pass the project directory to `qmake2cmake_all`:
 ```
-run_qmake2cmake ~/projects/myapp --min-qt-version 6.3
+qmake2cmake_all ~/projects/myapp --min-qt-version 6.3
 ```
 
 # Contributing to the scripts
