@@ -34,9 +34,12 @@ instructions:
         property: host.os
         equals_value: Windows
 
-    # Install dependencies
+    # Install the project in editable mode, which creates the executable scripts
+    # Also make sure to specify the extra dependencies so make test passes (the
+    # requirements specified in setup.cfg extras_require)
+    # The brackets must be right next to the dot
     - type: ExecuteCommand
-      command: "pip{{.Env.CI_EXECUTABLE_SUFFIX}} install -r requirements.txt"
+      command: "pip{{.Env.CI_EXECUTABLE_SUFFIX}} install -e .[dev,test]"
       ignoreExitCode: false
       maxTimeInSeconds: 7200
       maxTimeBetweenOutput: 900
