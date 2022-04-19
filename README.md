@@ -88,7 +88,17 @@ To convert a whole project tree, pass the project directory to `qmake2cmake_all`
 qmake2cmake_all ~/projects/myapp --min-qt-version 6.3
 ```
 
-# Contributing to the scripts
+# Contributing
+
+The main source code repository is hosted at
+[codereview.qt-project.org](https://codereview.qt-project.org/q/project:qt/qmake2cmake).
+
+See the [Qt Contribution Guidelines](https://wiki.qt.io/Qt_Contribution_Guidelines)
+page, [Setting up Gerrit](https://wiki.qt.io/Setting_up_Gerrit) and
+[Gerrit Introduction](https://wiki.qt.io/Gerrit_Introduction) for more
+details about how to upload patches for review.
+
+## Code style and tests
 
 You can run the linter (`mypy`), code-style checkers (`flake8`, `black`)
 and tests (`pytest`) by executing:
