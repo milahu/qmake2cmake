@@ -65,12 +65,6 @@ def parse_command_line() -> argparse.Namespace:
         help="Run pro2cmake only on .pro files that do not have a CMakeLists.txt.",
     )
     parser.add_argument(
-        "--only-qtbase-main-modules",
-        dest="only_qtbase_main_modules",
-        action="store_true",
-        help="Run pro2cmake only on the main modules in qtbase.",
-    )
-    parser.add_argument(
         "--skip-subdirs-projects",
         dest="skip_subdirs_projects",
         action="store_true",
@@ -142,35 +136,12 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
     def cmake_lists_missing_filter(path):
         return not cmake_lists_exists_filter(path)
 
-    def qtbase_main_modules_filter(path):
-        main_modules = [
-            "corelib",
-            "network",
-            "gui",
-            "widgets",
-            "testlib",
-            "printsupport",
-            "opengl",
-            "sql",
-            "dbus",
-            "concurrent",
-            "xml",
-        ]
-        path_suffixes = [f"src/{m}/{m}.pro" for m in main_modules]
-
-        for path_suffix in path_suffixes:
-            if path.endswith(path_suffix):
-                return True
-        return False
-
     filter_result = glob_result
     filter_func = None
     if args.only_existing:
         filter_func = cmake_lists_exists_filter
     elif args.only_missing:
         filter_func = cmake_lists_missing_filter
-    elif args.only_qtbase_main_modules:
-        filter_func = qtbase_main_modules_filter
 
     if filter_func:
         print("Filtering.")
@@ -242,10 +213,6 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
     failed_files = []
     files_count = len(all_files)
     workers = os.cpu_count() or 1
-
-    if args.only_qtbase_main_modules:
-        # qtbase main modules take longer than usual to process.
-        workers = 2
 
     def _process_a_file(
         data: typing.Tuple[str, int, int], direct_output: bool = False
