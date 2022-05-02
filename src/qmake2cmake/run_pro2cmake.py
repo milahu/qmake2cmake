@@ -42,8 +42,8 @@ from qmake2cmake.pro2cmake import do_include, Scope
 
 def parse_command_line() -> argparse.Namespace:
     parser = ArgumentParser(
-        description="Run pro2cmake on all .pro files recursively in given path. "
-        "You can pass additional arguments to the pro2cmake calls by appending "
+        description="Run qmake2cmake on all .pro files recursively in given path. "
+        "You can pass additional arguments to the qmake2cmake calls by appending "
         "-- --foo --bar"
     )
     parser.add_argument(
@@ -56,26 +56,26 @@ def parse_command_line() -> argparse.Namespace:
         "--only-existing",
         dest="only_existing",
         action="store_true",
-        help="Run pro2cmake only on .pro files that already have a CMakeLists.txt.",
+        help="Run qmake2cmake only on .pro files that already have a CMakeLists.txt.",
     )
     parser.add_argument(
         "--only-missing",
         dest="only_missing",
         action="store_true",
-        help="Run pro2cmake only on .pro files that do not have a CMakeLists.txt.",
+        help="Run qmake2cmake only on .pro files that do not have a CMakeLists.txt.",
     )
     parser.add_argument(
         "--skip-subdirs-projects",
         dest="skip_subdirs_projects",
         action="store_true",
-        help="Don't run pro2cmake on TEMPLATE=subdirs projects.",
+        help="Don't run qmake2cmake on TEMPLATE=subdirs projects.",
     )
     parser.add_argument(
         "--skip-smarty-directory-filtering",
         dest="skip_smart_directory_filtering",
         action="store_true",
-        help="Don't run pro2cmake on a pro file which is included in a subdir project in the same "
-        "directory.",
+        help="Don't run qmake2cmake on a pro file which is included in a subdir project in the "
+        "same directory.",
     )
     parser.add_argument(
         "--main-file",
@@ -99,7 +99,7 @@ def parse_command_line() -> argparse.Namespace:
     args, unknown = parser.parse_known_args()
 
     # Error out when the unknown arguments do not start with a "--",
-    # which implies passing through arguments to pro2cmake.
+    # which implies passing through arguments to qmake2cmake.
     if len(unknown) > 0 and unknown[0] != "--":
         parser.error("unrecognized arguments: {}".format(" ".join(unknown)))
     else:
