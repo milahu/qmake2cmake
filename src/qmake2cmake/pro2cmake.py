@@ -4009,17 +4009,17 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 """
         )
-    else:
-        cm_fh.write(
-            """
-qt_standard_project_setup()
-"""
-        )
 
     if scope.get_files("FORMS"):
         cm_fh.write("set(CMAKE_AUTOUIC ON)\n")
     cm_fh.write("\n")
     write_top_level_find_package_section(cm_fh, library_dependencies, indent=indent)
+    if min_qt_version >= version.parse("6.3"):
+        cm_fh.write(
+            """
+qt_standard_project_setup()
+"""
+        )
 
 
 def write_app_or_lib(
