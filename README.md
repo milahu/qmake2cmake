@@ -119,7 +119,7 @@ make format
 
 # Releasing a new version
 
-Increase the version number in `setup.py` according to semantic versioning 2.0.
+Increase the version number in `setup.cfg` according to semantic versioning 2.0.
 
 For building and uploading `qmake2cmake` you will need the Python
 modules `build` and `twine`.
