@@ -128,53 +128,74 @@ def test_subdirs():
 def test_common_project_types():
     output = convert("app")
     assert(r"""
-qt_add_executable(app WIN32 MACOSX_BUNDLE
+qt_add_executable(app WIN32 MACOSX_BUNDLE)
+target_sources(app PRIVATE
     main.cpp
-)""" in output)
+)
+""" in output)
 
     output = convert("app_cmdline")
     assert(r"""
-qt_add_executable(myapp
+qt_add_executable(myapp)
+target_sources(myapp PRIVATE
     main.cpp
-)""" in output)
+)
+""" in output)
 
     output = convert("app_console")
     assert(r"""
-qt_add_executable(myapp MACOSX_BUNDLE
+qt_add_executable(myapp MACOSX_BUNDLE)
+target_sources(myapp PRIVATE
     main.cpp
-)""" in output)
+)
+""" in output)
 
     output = convert("app_nonbundle")
     assert(r"""
-qt_add_executable(myapp WIN32
+qt_add_executable(myapp WIN32)
+target_sources(myapp PRIVATE
     main.cpp
-)""" in output)
+)
+""" in output)
 
     output = convert("lib_shared")
     assert(r"""
-qt_add_library(lib_shared
+qt_add_library(lib_shared)
+target_sources(lib_shared PRIVATE
+    lib.cpp
+)
 """ in output)
 
     output = convert("lib_static")
     assert(r"""
-qt_add_library(lib_static STATIC
+qt_add_library(lib_static STATIC)
+target_sources(lib_static PRIVATE
+    lib.cpp
+)
 """ in output)
 
     output = convert("plugin_shared")
     assert(r"""
-qt_add_plugin(plugin_shared
+qt_add_plugin(plugin_shared)
+target_sources(plugin_shared PRIVATE
+    lib.cpp
+)
 """ in output)
 
     output = convert("plugin_static")
     assert(r"""
-qt_add_plugin(plugin_static STATIC
+qt_add_plugin(plugin_static STATIC)
+target_sources(plugin_static PRIVATE
+    lib.cpp
+)
 """ in output)
 
 
 def test_qml_modules():
     output = convert("app_qml_module")
     assert(r"""
-qt_add_executable(myapp WIN32 MACOSX_BUNDLE
+qt_add_executable(myapp WIN32 MACOSX_BUNDLE)
+target_sources(myapp PRIVATE
     donkeyengine.cpp donkeyengine.h
     main.cpp
 )
@@ -193,7 +214,8 @@ qt_add_qml_module(myapp
 
     output = convert("lib_qml_module")
     assert(r"""
-qt_add_library(lib_qml_module
+qt_add_library(lib_qml_module)
+target_sources(lib_qml_module PRIVATE
     donkeyengine.cpp donkeyengine.h
 )
 qt_add_qml_module(lib_qml_module

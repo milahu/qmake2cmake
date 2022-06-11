@@ -4082,7 +4082,6 @@ def write_app_or_lib(
             extra_add_qml_module_args=extra_args,
         )
         add_target += io_string.getvalue()
-        add_target += f"target_sources({binary_name} PRIVATE"
     elif scope.TEMPLATE == "app":
         add_target = f"qt_add_executable({binary_name}"
 
@@ -4092,6 +4091,7 @@ def write_app_or_lib(
             add_target += " " + "WIN32"
         if property_mac_bundle:
             add_target += " " + "MACOSX_BUNDLE"
+        add_target += ")\n"
     else:
         if is_plugin:
             add_target = f"qt_add_plugin({binary_name}"
@@ -4099,7 +4099,12 @@ def write_app_or_lib(
             add_target = f"qt_add_library({binary_name}"
         if "static" in config:
             add_target += " STATIC"
+        add_target += ")\n"
 
+    # note: qt_add_plugin does not support the "sources..." argument
+    # https://bugreports.qt.io/browse/QTBUG-104189
+    # -> generic solution: add sources with target_sources
+    add_target += f"target_sources({binary_name} PRIVATE\n"
     write_all_source_file_lists(cm_fh, scope, add_target, indent=0)
     cm_fh.write(")\n")
 
