@@ -265,6 +265,50 @@ install(TARGETS lib_install
 )""" in output)
 
 
+def test_install_targets():
+    output = convert("install_targets")
+    # note: cmake executes the install commands in order of appearance
+    # so the order matters
+    assert(r"""
+# install_lib
+install(TARGETS install_targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# install_c
+install(CODE [[
+    message(STATUS "Installing: install_targets: c: /dst/c.txt")
+    file(COPY /src/c.txt DESTINATION /dst/)
+]])
+
+# install_a
+# depends on: install_c
+install(CODE [[
+    message(STATUS "Installing: install_targets: a: /dst/a")
+    file(COPY /src/a DESTINATION /dst/)
+]])
+
+# install_b
+# depends on: install_a
+install(CODE [[
+    message(STATUS "Installing: install_targets: b: /dst/")
+    file(COPY /src/b/ DESTINATION /dst/)
+]])
+
+# install_distinfo
+# depends on: install_lib install_a install_b install_c
+install(CODE [[
+    message(STATUS "Running: install_targets: distinfo: sip-distinfo --inventory /dst/inventory.txt --project-root /src")
+    execute_process(
+        COMMAND sip-distinfo --inventory /dst/inventory.txt --project-root /src
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+]])
+""" in output)
+
+
 def test_deploy_commands():
     output = convert("app", min_qt_version="6.2")
     assert(r"""

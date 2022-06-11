@@ -42,6 +42,7 @@ import io
 import itertools
 import glob
 import fnmatch
+import networkx
 
 from qmake2cmake.condition_simplifier import simplify_condition
 from qmake2cmake.condition_simplifier_cache import set_condition_simplified_cache_enabled
@@ -960,6 +961,8 @@ class OperationLocation(object):
 class Scope(object):
 
     SCOPE_ID: int = 1
+    _main_scope: Scope = None
+    _user_variables: Optional[dict] = None # only in main scope
 
     def __init__(
         self,
@@ -981,7 +984,13 @@ class Scope(object):
         self._operations: Dict[str, List[Operation]] = copy.deepcopy(operations)
         if parent_scope:
             parent_scope._add_child(self)
+            self._parent = parent_scope
+            self._main_scope = self._parent
+            while self._main_scope._parent: # find the main scope
+                self._main_scope = self._main_scope._parent
         else:
+            self._main_scope = self
+            self._user_variables = dict()
             self._parent = None  # type: Optional[Scope]
             # Only add the  "QT = core gui" Set operation once, on the
             # very top-level .pro scope, aka it's basedir is empty.
@@ -2064,6 +2073,8 @@ def handle_subdir(
     # Then write the subdirectories.
     group_and_print_sub_dirs(scope, indent=indent)
 
+    write_postinstall_commands(cm_fh, scope)
+
 
 def sort_sources(sources: List[str]) -> List[str]:
     to_sort = {}  # type: Dict[str, List[str]]
@@ -2198,9 +2209,13 @@ def write_list(
         cm_fh.write(f"{ind}{header}")
         extra_indent += "    "
     if cmake_parameter:
+        cmake_parameter = cmake_parameter.rstrip() # avoid \n\n
         cm_fh.write(f"{ind}{extra_indent}{cmake_parameter}\n")
         extra_indent += "    "
     for s in sort_sources(entries):
+        s = s.strip()
+        if s == "":
+            continue # avoid \n\n
         cm_fh.write(f"{ind}{extra_indent}{prefix}{s}\n")
     if footer:
         cm_fh.write(f"{ind}{footer}\n")
@@ -3414,9 +3429,14 @@ def write_main_part(
             destdir = replace_path_constants(destdir, scope)
             extra_lines.append(f'OUTPUT_DIRECTORY "{destdir}"')
 
+    # add main target
     cm_fh.write(f"{spaces(indent)}{cmake_function}({target_ref}\n")
     for extra_line in extra_lines:
         cm_fh.write(f"{spaces(indent)}    {extra_line}\n")
+
+    write_link_options(io_string, binary_name, scope, indent=indent)
+
+    write_user_variables(io_string, binary_name, scope, indent=indent)
 
     write_sources_section(cm_fh, scopes[0], indent=indent, **kwargs)
 
@@ -4207,6 +4227,10 @@ endif()
             io_string, scope, f"target_compile_options({binary_name}", indent=indent, footer=")\n"
         )
 
+        write_link_options(io_string, binary_name, scope, indent=indent)
+
+        write_user_variables(io_string, binary_name, scope, indent=indent)
+
         (resources, standalone_qtquick_compiler_skipped_files) = extract_resources(
             binary_name, scope
         )
@@ -4237,10 +4261,86 @@ endif()
 
         handling_first_scope = False
 
+    write_postbuild_commands(cm_fh, main_scope)
+
     write_install_commands(cm_fh, main_scope)
+
+    write_postinstall_commands(cm_fh, main_scope)
+
     write_deploy_app_commands(cm_fh, main_scope)
 
     return binary_name
+
+
+def write_postbuild_commands(cm_fh, scope):
+    post_link = scope.get("QMAKE_POST_LINK")
+    if post_link:
+        # expand user variables
+        post_link = list(map(lambda s: scope._main_scope._user_variables.get(s, s), post_link))
+        command_map = {
+            "$(COPY_FILE)": (
+                lambda a: len(a) == 3, # extra condition for this command
+                lambda a: f'${{CMAKE_COMMAND}} -E copy "{a[1]}" "{a[2]}"', # TODO shlex, escape args
+                lambda a: f'cmake -E copy "{a[1]}" "{a[2]}"', # pretty version for logging
+            ),
+        }
+        if post_link[0] in command_map and command_map[post_link[0]][0](post_link):
+            cmd_str = command_map[post_link[0]][1](post_link)
+            cmd_str_short = command_map[post_link[0]][2](post_link)
+            cm_fh.write(f'\n')
+
+            cm_fh.write(f'add_custom_command(TARGET "{scope.TARGET}" POST_BUILD\n')
+            cm_fh.write(f'{spaces(1)}COMMAND ${{CMAKE_COMMAND}} -E echo QMAKE_POST_LINK: {cmd_str_short} \\(workdir: ${{CMAKE_CURRENT_BINARY_DIR}}\\)\n')
+            cm_fh.write(f"{spaces(1)}COMMAND {cmd_str}\n")
+            cm_fh.write(f'{spaces(1)}VERBATIM\n')
+            cm_fh.write(f")\n")
+            # example cmake output:
+            # [ 12%] Linking CXX shared module libQtGui.so
+            # QMAKE_POST_LINK: cmake -E copy libQtGui.so QtGui.abi3.so (workdir: /build/tmp5rh0xism/QtGui)
+            # [ 12%] Built target QtGui
+        else:
+            cm_fh.write(f"\n# TODO implement:\n")
+            cm_fh.write(f"# QMAKE_POST_LINK = {post_link}\n")
+
+
+def write_user_variables(io_string, binary_name, scope, indent=0):
+    # user variables = all keys that are not handled by qmake
+    # https://doc.qt.io/qt-6/qmake-variable-reference.html
+    qmake_keys = {
+        'QT', 'TEMPLATE', 'TARGET', 'SOURCES', 'HEADERS', 'RESOURCES', 'INSTALLS',
+        'QT_SOURCE_TREE', 'QT_BUILD_TREE', 'QTRO_SOURCE_TREE', 'QMAKE_POST_LINK',
+        'QMAKE_LFLAGS', 'CONFIG', 'DEFINES', 'INCLUDEPATH', 'QML_IMPORT_NAME',
+        'QML_IMPORT_MAJOR_VERSION'
+        # TODO more
+    }
+
+    key_regex = re.compile(r"[A-Z_]+") # key must be uppercase
+    key_list = list(filter(lambda k: not k in qmake_keys and key_regex.match(k), scope.keys))
+    if not key_list:
+        return
+    io_string.write(f"{spaces(indent)}# set user variables\n")
+    for key in key_list:
+        if key in qmake_keys:
+            continue
+        val = scope.get_string(key)
+        # https://cmake.org/cmake/help/v3.0/manual/cmake-generator-expressions.7.html
+        val = val.replace("$(DESTDIR)", f"$<TARGET_FILE_DIR:{scope._main_scope.TARGET}>")
+        val = val.replace("$(TARGET)", f"$<TARGET_FILE_NAME:{scope._main_scope.TARGET}>")
+        val = val.replace("$(DESTDIR_TARGET)", f"$<TARGET_FILE:{scope._main_scope.TARGET}>")
+        io_string.write(f"{spaces(indent)}set({key} {val})\n")
+        scope._main_scope._user_variables.update({f"$${key}": f"${{{key}}}"})
+
+
+def write_link_options(io_string, binary_name, scope, indent=0):
+        link_options = scope.get("QMAKE_LFLAGS")
+        if not link_options:
+            return
+        # https://cmake.org/cmake/help/latest/command/target_link_options.html
+        io_string.write(f"{spaces(indent)}target_link_options({scope._main_scope.TARGET}\n")
+        io_string.write(f"{spaces(indent + 1)}PRIVATE\n")
+        for link_option in link_options:
+            io_string.write(f"{spaces(indent + 1)}{link_option}\n")
+        io_string.write(f"{spaces(indent)})\n")
 
 
 def write_install_commands(cm_fh: IO[str], scope: Scope):
@@ -4268,13 +4368,189 @@ def write_install_commands(cm_fh: IO[str], scope: Scope):
 
     install_options_str = "\n".join(install_options)
 
+    main_install_target = main_install_target_of_template[scope.TEMPLATE]
+
     cm_fh.write(
         f"""
+# {main_install_target}
 install(TARGETS {binary_name}
 {install_options_str}
 )
 """
     )
+
+
+main_install_target_of_template = {
+    "subdirs": "install_subtargets",
+    "lib": "install_lib",
+    "app": "install_app",
+}
+
+
+def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
+
+    scope_installs = scope.get('INSTALLS')
+    if not scope_installs:
+        return
+
+    main_install_target = main_install_target_of_template[scope.TEMPLATE]
+
+    # cmake executes postinstall commands in order of appearance
+    # so we must resolve the execution order manually
+    # from the dependencies specified in the .pro file
+
+    # TODO let cmake resolve dependencies. not implemented in cmake?
+    # https://discourse.cmake.org/t/install-file-with-custom-target/2984
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/8438
+
+    # build dependency graph
+    depgraph = networkx.DiGraph()
+    depgraph_roots = set()
+    for target_name in scope_installs:
+        print(f"installs.{target_name}.depends = {scope.get(f'{target_name}.depends')}") # depends on other targets
+        target_depends = scope.get(f'{target_name}.depends')
+        install_target_name = "install_" + target_name
+        for dep in target_depends:
+            depgraph.add_edge(dep, install_target_name)
+        # quickfix for install-targets without dependencies
+        # make all install targets depend on the main install target
+        depgraph.add_edge(main_install_target, install_target_name)
+
+    # find roots of graph
+    depgraph_roots = []
+    for component in networkx.weakly_connected_components(depgraph):
+        subgraph = depgraph.subgraph(component)
+        depgraph_roots.extend([n for n,d in subgraph.in_degree() if d==0])
+
+    targets_sorted = None
+
+    # check for cycles
+    # toposort throws exception, but does not print cycles
+    depgraph_cycles = list(networkx.simple_cycles(depgraph))
+    if depgraph_cycles:
+        raise Exception(f"found cycles in depgraph: {depgraph_cycles}")
+
+    targets_sorted = list(networkx.topological_sort(depgraph))
+
+    # the main target was added in write_install_commands
+    if scope.TEMPLATE == "subdirs":
+        assert targets_sorted[0] == "install_subtargets"
+    if scope.TEMPLATE == "lib":
+        assert targets_sorted[0] == "install_lib"
+    if scope.TEMPLATE == "app":
+        assert targets_sorted[0] == "install_app"
+
+    for install_target_name in targets_sorted[1:]:
+        target_name = install_target_name[8:]
+        target_config = scope.get(f'{target_name}.CONFIG')
+        cm_fh.write("\n")
+
+        dst = scope.get_string(f'{target_name}.path') # target dir
+
+        # TODO refactor ...
+
+        # TODO use only one install(CODE ...) block per subtarget
+
+        # TODO store list of source files in local cmake variable
+        # set(_source_file_list
+        #     file1.txt
+        #     file2.txt
+        # )
+        # set(_dest_dir /path/to/dest/)
+        # foreach(_source_file IN LIST _source_file_list)
+        #     set(_file_base ...)
+        #     set(_dest_file ${_dest_dir}/${_file_base})
+        #     message(STATUS "Installing: ${_dest_file}")
+        #     file(COPY ${_source_file} ${_dest_dir})
+        # endforeach()
+
+        # TODO use function to install subtargets
+        # install_subtarget(
+        #     TARGET QtCore
+        #     SUBTARGET sip
+        #     DESTINATION /path/to/dest/
+        #     COMMAND echo hello world
+        #     FILES file1.txt file2.txt
+        # )
+
+        # copy files
+        for src in scope.get(f'{target_name}.files'):
+            cb_fh = io.StringIO() # code block
+            indent = 1
+            #if "no_check_exist" in target_config:
+            # TODO what exactly does "no_check_exist" mean? ignore missing src?
+            # problem: cmake's file(COPY ...) has no option for this
+            # so we need "cmake -E copy ..." but that is not recursive
+            # f"execute_process(COMMAND ${{CMAKE_COMMAND}} -E copy {src} {dst}/\n')"
+
+            project_workdir = os.path.dirname(scope._file_absolute_path)
+            dst_file_path = os.path.join(dst, os.path.basename(src))
+
+            target_str = scope._main_scope.TARGET
+            if target_name != "target":
+                target_str += f": {target_name}" # subtarget
+            cb_fh.write(f'{spaces(indent)}message(STATUS "Installing: {target_str}: {dst_file_path}")\n')
+
+            src_abs = os.path.join(project_workdir, src)
+            dst_abs = os.path.join(project_workdir, dst) + "/" # append / -> dst is target directory
+
+            cb_fh.write(f'{spaces(indent)}file(COPY {src_abs} DESTINATION {dst_abs})\n')
+
+            # document dependencies as cmake comments
+            cm_fh.write(f"# install_{target_name}\n")
+            depends_str = " ".join(scope.get(f'{target_name}.depends'))
+            if depends_str:
+                cm_fh.write(f"# depends on: {depends_str}\n")
+
+            cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
+            cb_fh.close()
+
+        # run extra command
+        cmd_str = scope.get_string(f'{target_name}.extra')
+        if cmd_str:
+            # convert variables from Makefile to cmake
+            cmd_str = cmd_str.replace("$(INSTALL_ROOT)", "${CMAKE_INSTALL_PREFIX}")
+            cmd_str = cmd_str.replace("$(BUILD_ROOT)", "${CMAKE_BINARY_DIR}")
+            cmd_str = cmd_str.replace("$(SOURCE_ROOT)", "${CMAKE_SOURCE_DIR}")
+
+            cb_fh = io.StringIO() # code block
+
+            project_workdir = os.path.dirname(scope._file_absolute_path)
+
+            cmd_str_esc = cmd_str.replace('"', '\\"')
+            # TODO use cmake variable for project_workdir
+            cb_fh.write(f'{spaces(indent)}message(STATUS "Running: {scope._main_scope.TARGET}: {target_name}: {cmd_str_esc}")\n')
+            cb_fh.write(f'{spaces(indent)}execute_process(\n')
+            cb_fh.write(f'{spaces(indent + 1)}COMMAND {cmd_str}\n')
+            cb_fh.write(f'{spaces(indent + 1)}COMMAND_ERROR_IS_FATAL ANY\n')
+            cb_fh.write(f'{spaces(indent)})\n')
+
+            # document dependencies as cmake comments
+            cm_fh.write(f"# install_{target_name}\n")
+            depends_str = " ".join(scope.get(f'{target_name}.depends'))
+            if depends_str:
+                cm_fh.write(f"# depends on: {depends_str}\n") # depends on other targets
+
+            cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
+            cb_fh.close()
+
+
+def bracket_string(cb_fh: IO[str]):
+    "format string as cmake bracket argument"
+    # https://cmake.org/cmake/help/v3.23/manual/cmake-language.7.html#bracket-argument
+    bracket_content = cb_fh.getvalue()
+    bracket_content = bracket_content.rstrip() # remove trailing \n
+    bracket_open = ""
+    bracket_close = ""
+    for i in range(0, 9999): # find shortest delimiter
+        bracket_open = "[" + "="*i + "["
+        bracket_close = "]" + "="*i + "]"
+        if bracket_close in bracket_content:
+            continue
+        if bracket_open in bracket_content: # optional condition
+            continue
+        break
+    return f"{bracket_open}\n{bracket_content}\n{bracket_close}"
 
 
 def write_deploy_app_commands(cm_fh: IO[str], scope: Scope):
