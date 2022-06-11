@@ -3838,6 +3838,8 @@ def write_find_package_section(
         if "Core" in qt_components:
             qt_components.remove("Core")
         qt_components = sorted(qt_components)
+        if is_required:
+            qt_components = ["Core"] + qt_components
         qt_package = LibraryMapping("unknown", qt_package_name, "unknown", components=qt_components)
         if is_required:
             qt_package.extra = ["REQUIRED"]
@@ -3865,7 +3867,7 @@ def write_top_level_find_package_section(
     indent: int = 0,
 ):
     # Write find_package call for Qt5/Qt6 and make it available as package QT.
-    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)\n")
+    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED)\n")
 
     # Write find_package calls for required packages.
     write_find_package_section(
