@@ -43,6 +43,7 @@ import itertools
 import glob
 import fnmatch
 import pathlib
+import shlex
 import networkx
 
 from qmake2cmake.condition_simplifier import simplify_condition
@@ -4030,41 +4031,21 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
+""")
+
+    # cmake helper functions:
+    # install_target_files
+    # install_target_command
+    # TODO setup.py: install helper_functions.cmake
+    helper_functions_path = str(pathlib.PurePath(__file__).parent / "helper_functions.cmake")
+    with open(helper_functions_path, "r") as f:
+        cmake_helper_functions = f.read()
+    cm_fh.write(
+        f"""
 
 # helper functions
 
-function(get_name_of_path path result)
-    # get basename of filepath or dirname of dirpath
-    cmake_path(SET path NORMALIZE "${path}")
-    string(REGEX REPLACE "(.)/$" "\\1" path "${path}")
-    cmake_path(GET path FILENAME name)
-    set(${result} "${name}" PARENT_SCOPE)
-endfunction()
-
-function(get_dst_of_src src dstdir result)
-    get_name_of_path("${src}" name)
-    cmake_path(APPEND dst "${dstdir}" "${name}")
-    set(${result} "${dst}" PARENT_SCOPE)
-endfunction()
-
-function(install_target_files)
-    cmake_parse_arguments("ARG" "" "TARGET;DESTINATION" "SOURCES" ${ARGN})
-    if(NOT ARG_TARGET)
-        message(FATAL_ERROR "install_target_files: missing argument: TARGET")
-    endif()
-    if(NOT ARG_DESTINATION)
-        message(FATAL_ERROR "install_target_files: missing argument: DESTINATION")
-    endif()
-    if(NOT ARG_SOURCES)
-        message(FATAL_ERROR "install_target_files: missing argument: SOURCES")
-    endif()
-    foreach(src ${ARG_SOURCES})
-        get_dst_of_src("${src}" "${ARG_DESTINATION}" dst)
-        message(STATUS "Installing: ${ARG_TARGET}: ${dst}")
-        message([[file(COPY "${src}" DESTINATION "${ARG_DESTINATION}/")]])
-        file(COPY "${src}" DESTINATION "${ARG_DESTINATION}/")
-    endforeach()
-endfunction()
+{cmake_helper_functions}
 """
         )
 
@@ -4480,37 +4461,19 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
         target_name = install_target_name[8:]
         target_config = scope.get(f'{target_name}.CONFIG')
 
-        cb_fh = io.StringIO() # code block
-        indent = 1
+        indent = 0
 
         dst = scope.get_string(f'{target_name}.path') # target dir
 
-        # TODO refactor ...
-
-        # TODO store list of source files in local cmake variable
-        # set(_source_file_list
-        #     file1.txt
-        #     file2.txt
-        # )
-        # set(_dest_dir /path/to/dest/)
-        # foreach(_source_file IN LIST _source_file_list)
-        #     set(_file_base ...)
-        #     set(_dest_file ${_dest_dir}/${_file_base})
-        #     message(STATUS "Installing: ${_dest_file}")
-        #     file(COPY ${_source_file} ${_dest_dir})
-        # endforeach()
-
-        # TODO use function to install subtargets
-        # install_subtarget(
-        #     TARGET QtCore
-        #     SUBTARGET sip
-        #     DESTINATION /path/to/dest/
-        #     COMMAND echo hello world
-        #     FILES file1.txt file2.txt
-        # )
-
         # TODO what comes first? copy files or run command?
 
+        cm_fh.write("\n")
+        cm_fh.write(f"# install_{target_name}\n")
+        depends_str = " ".join(scope.get(f'{target_name}.depends'))
+        if depends_str: # document dependencies as cmake comments
+            cm_fh.write(f"# depends on: {depends_str}\n")
+
+        # TODO use cmake variable for project_workdir?
         project_workdir = os.path.dirname(scope._file_absolute_path)
         dst_abs = os.path.join(project_workdir, dst) # target directory
 
@@ -4529,49 +4492,64 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             # f"execute_process(COMMAND ${{CMAKE_COMMAND}} -E copy {src} {dst}/\n')"
 
             if not done_copy_header:
-                cb_fh.write(f'{spaces(indent)}install_target_files(\n')
-                cb_fh.write(f'{spaces(indent + 1)}TARGET "{target_str}"\n')
-                cb_fh.write(f'{spaces(indent + 1)}DESTINATION "{dst_abs}"\n') # TODO quote only when necessary
-                cb_fh.write(f'{spaces(indent + 1)}SOURCES\n')
+                cm_fh.write(f'{spaces(indent)}install_target_files(\n')
+                cm_fh.write(f'{spaces(indent + 1)}TARGET {shlex.quote(target_str)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}DESTINATION {shlex.quote(dst_abs)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}SOURCES\n')
                 done_copy_header = True
 
             src_abs = os.path.join(project_workdir, src)
-            cb_fh.write(f'{spaces(indent + 1)}"{src_abs}"\n') # TODO quote only when necessary
+            cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(src_abs)}\n')
 
         if done_copy_header:
-            cb_fh.write(f')\n') # end of install_target_files
+            cm_fh.write(f')\n') # end of install_target_files
 
         # run extra command
+        # FIXME parser bug: unquoted strings + braces = wrong whitespace
+        # https://bugreports.qt.io/browse/QTBUG-104195
+        # workaround: in the .pro file, use quoted string for command
+        # example:
+        # target.extra = "printf \"%q\n\" (hello world)"
         cmd_str = scope.get_string(f'{target_name}.extra')
         if cmd_str:
             # convert variables from Makefile to cmake
+            # TODO better?
             cmd_str = cmd_str.replace("$(INSTALL_ROOT)", "${CMAKE_INSTALL_PREFIX}")
             cmd_str = cmd_str.replace("$(BUILD_ROOT)", "${CMAKE_BINARY_DIR}")
             cmd_str = cmd_str.replace("$(SOURCE_ROOT)", "${CMAKE_SOURCE_DIR}")
 
-            project_workdir = os.path.dirname(scope._file_absolute_path)
-
             cmd_str_esc = cmd_str.replace('"', '\\"')
-            # TODO use cmake variable for project_workdir
-            cb_fh.write(f'{spaces(indent)}message(STATUS "Running: {scope._main_scope.TARGET}: {target_name}: {cmd_str_esc}")\n')
-            cb_fh.write(f'{spaces(indent)}execute_process(\n')
-            cb_fh.write(f'{spaces(indent + 1)}COMMAND {cmd_str}\n')
-            cb_fh.write(f'{spaces(indent + 1)}COMMAND_ERROR_IS_FATAL ANY\n')
-            cb_fh.write(f'{spaces(indent)})\n')
+            cm_fh.write(f'{spaces(indent)}install_target_command(\n')
+            cm_fh.write(f'{spaces(indent + 1)}TARGET "{target_str}"\n')
+            #cm_fh.write(f'{spaces(indent + 1)}WORKING_DIRECTORY "{dst_abs}"\n')
+            cm_fh.write(f'{spaces(indent + 1)}COMMAND\n')
+            last_was_key = False
+            key_expr = re.compile(r"^--?[a-zA-Z0-9]")
+            for arg in shlex.split(cmd_str):
+                if last_was_key:
+                    if key_expr.match(arg): # next key
+                        cm_fh.write('\n')
+                        cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(arg)}')
+                        last_was_key = True
+                    else: # value
+                        cm_fh.write(f' {shlex.quote(arg)}\n')
+                        last_was_key = False
+                    continue
+                cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(arg)}')
+                if key_expr.match(arg): # key
+                    last_was_key = True
+                else:
+                    cm_fh.write('\n')
+            if last_was_key:
+                cm_fh.write('\n')
+            cm_fh.write(f'{spaces(indent)})\n')
 
-        cm_fh.write("\n")
-        cm_fh.write(f"# install_{target_name}\n")
-        depends_str = " ".join(scope.get(f'{target_name}.depends'))
-        if depends_str: # document dependencies as cmake comments
-            cm_fh.write(f"# depends on: {depends_str}\n")
-        cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
-        cb_fh.close()
 
-
-def bracket_string(cb_fh: IO[str]):
+# TODO remove? not used
+def bracket_string(fh: IO[str]):
     "format string as cmake bracket argument"
     # https://cmake.org/cmake/help/v3.23/manual/cmake-language.7.html#bracket-argument
-    bracket_content = cb_fh.getvalue()
+    bracket_content = fh.getvalue()
     bracket_content = bracket_content.rstrip() # remove trailing \n
     bracket_open = ""
     bracket_close = ""

@@ -278,34 +278,41 @@ install(TARGETS install_targets
 )
 
 # install_c
-install(CODE [[
-    message(STATUS "Installing: install_targets: c: /dst/c.txt")
-    file(COPY /src/c.txt DESTINATION /dst/)
-]])
+install_target_files(
+    TARGET "install_targets: c"
+    DESTINATION /dst
+    SOURCES
+    /src/c1.txt
+    /src/c2.txt
+)
 
 # install_a
 # depends on: install_c
-install(CODE [[
-    message(STATUS "Installing: install_targets: a: /dst/a")
-    file(COPY /src/a DESTINATION /dst/)
-]])
+install_target_files(
+    TARGET "install_targets: a"
+    DESTINATION /dst
+    SOURCES
+    /src/a
+)
 
 # install_b
 # depends on: install_a
-install(CODE [[
-    message(STATUS "Installing: install_targets: b: /dst/")
-    file(COPY /src/b/ DESTINATION /dst/)
-]])
+install_target_files(
+    TARGET "install_targets: b"
+    DESTINATION /dst
+    SOURCES
+    /src/b/
+)
 
 # install_distinfo
 # depends on: install_lib install_a install_b install_c
-install(CODE [[
-    message(STATUS "Running: install_targets: distinfo: sip-distinfo --inventory /dst/inventory.txt --project-root /src")
-    execute_process(
-        COMMAND sip-distinfo --inventory /dst/inventory.txt --project-root /src
-        COMMAND_ERROR_IS_FATAL ANY
-    )
-]])
+install_target_command(
+    TARGET "install_targets: distinfo"
+    COMMAND
+    sip-distinfo
+    --inventory /dst/inventory.txt
+    --project-root /src
+)
 """ in output)
 
 
