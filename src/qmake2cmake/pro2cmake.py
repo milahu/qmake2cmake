@@ -42,6 +42,7 @@ import io
 import itertools
 import glob
 import fnmatch
+import pathlib
 import networkx
 
 from qmake2cmake.condition_simplifier import simplify_condition
@@ -4029,6 +4030,41 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
+
+# helper functions
+
+function(get_name_of_path path result)
+    # get basename of filepath or dirname of dirpath
+    cmake_path(SET path NORMALIZE "${path}")
+    string(REGEX REPLACE "(.)/$" "\\1" path "${path}")
+    cmake_path(GET path FILENAME name)
+    set(${result} "${name}" PARENT_SCOPE)
+endfunction()
+
+function(get_dst_of_src src dstdir result)
+    get_name_of_path("${src}" name)
+    cmake_path(APPEND dst "${dstdir}" "${name}")
+    set(${result} "${dst}" PARENT_SCOPE)
+endfunction()
+
+function(install_target_files)
+    cmake_parse_arguments("ARG" "" "TARGET;DESTINATION" "SOURCES" ${ARGN})
+    if(NOT ARG_TARGET)
+        message(FATAL_ERROR "install_target_files: missing argument: TARGET")
+    endif()
+    if(NOT ARG_DESTINATION)
+        message(FATAL_ERROR "install_target_files: missing argument: DESTINATION")
+    endif()
+    if(NOT ARG_SOURCES)
+        message(FATAL_ERROR "install_target_files: missing argument: SOURCES")
+    endif()
+    foreach(src ${ARG_SOURCES})
+        get_dst_of_src("${src}" "${ARG_DESTINATION}" dst)
+        message(STATUS "Installing: ${ARG_TARGET}: ${dst}")
+        message([[file(COPY "${src}" DESTINATION "${ARG_DESTINATION}/")]])
+        file(COPY "${src}" DESTINATION "${ARG_DESTINATION}/")
+    endforeach()
+endfunction()
 """
         )
 
@@ -4443,13 +4479,13 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
     for install_target_name in targets_sorted[1:]:
         target_name = install_target_name[8:]
         target_config = scope.get(f'{target_name}.CONFIG')
-        cm_fh.write("\n")
+
+        cb_fh = io.StringIO() # code block
+        indent = 1
 
         dst = scope.get_string(f'{target_name}.path') # target dir
 
         # TODO refactor ...
-
-        # TODO use only one install(CODE ...) block per subtarget
 
         # TODO store list of source files in local cmake variable
         # set(_source_file_list
@@ -4473,37 +4509,37 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
         #     FILES file1.txt file2.txt
         # )
 
+        # TODO what comes first? copy files or run command?
+
+        project_workdir = os.path.dirname(scope._file_absolute_path)
+        dst_abs = os.path.join(project_workdir, dst) # target directory
+
+        target_str = scope._main_scope.TARGET
+        if target_name != "target":
+            target_str += f": {target_name}" # subtarget
+
+        done_copy_header = False
+
         # copy files
         for src in scope.get(f'{target_name}.files'):
-            cb_fh = io.StringIO() # code block
-            indent = 1
             #if "no_check_exist" in target_config:
             # TODO what exactly does "no_check_exist" mean? ignore missing src?
             # problem: cmake's file(COPY ...) has no option for this
             # so we need "cmake -E copy ..." but that is not recursive
             # f"execute_process(COMMAND ${{CMAKE_COMMAND}} -E copy {src} {dst}/\n')"
 
-            project_workdir = os.path.dirname(scope._file_absolute_path)
-            dst_file_path = os.path.join(dst, os.path.basename(src))
-
-            target_str = scope._main_scope.TARGET
-            if target_name != "target":
-                target_str += f": {target_name}" # subtarget
-            cb_fh.write(f'{spaces(indent)}message(STATUS "Installing: {target_str}: {dst_file_path}")\n')
+            if not done_copy_header:
+                cb_fh.write(f'{spaces(indent)}install_target_files(\n')
+                cb_fh.write(f'{spaces(indent + 1)}TARGET "{target_str}"\n')
+                cb_fh.write(f'{spaces(indent + 1)}DESTINATION "{dst_abs}"\n') # TODO quote only when necessary
+                cb_fh.write(f'{spaces(indent + 1)}SOURCES\n')
+                done_copy_header = True
 
             src_abs = os.path.join(project_workdir, src)
-            dst_abs = os.path.join(project_workdir, dst) + "/" # append / -> dst is target directory
+            cb_fh.write(f'{spaces(indent + 1)}"{src_abs}"\n') # TODO quote only when necessary
 
-            cb_fh.write(f'{spaces(indent)}file(COPY {src_abs} DESTINATION {dst_abs})\n')
-
-            # document dependencies as cmake comments
-            cm_fh.write(f"# install_{target_name}\n")
-            depends_str = " ".join(scope.get(f'{target_name}.depends'))
-            if depends_str:
-                cm_fh.write(f"# depends on: {depends_str}\n")
-
-            cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
-            cb_fh.close()
+        if done_copy_header:
+            cb_fh.write(f')\n') # end of install_target_files
 
         # run extra command
         cmd_str = scope.get_string(f'{target_name}.extra')
@@ -4512,8 +4548,6 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             cmd_str = cmd_str.replace("$(INSTALL_ROOT)", "${CMAKE_INSTALL_PREFIX}")
             cmd_str = cmd_str.replace("$(BUILD_ROOT)", "${CMAKE_BINARY_DIR}")
             cmd_str = cmd_str.replace("$(SOURCE_ROOT)", "${CMAKE_SOURCE_DIR}")
-
-            cb_fh = io.StringIO() # code block
 
             project_workdir = os.path.dirname(scope._file_absolute_path)
 
@@ -4525,14 +4559,13 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             cb_fh.write(f'{spaces(indent + 1)}COMMAND_ERROR_IS_FATAL ANY\n')
             cb_fh.write(f'{spaces(indent)})\n')
 
-            # document dependencies as cmake comments
-            cm_fh.write(f"# install_{target_name}\n")
-            depends_str = " ".join(scope.get(f'{target_name}.depends'))
-            if depends_str:
-                cm_fh.write(f"# depends on: {depends_str}\n") # depends on other targets
-
-            cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
-            cb_fh.close()
+        cm_fh.write("\n")
+        cm_fh.write(f"# install_{target_name}\n")
+        depends_str = " ".join(scope.get(f'{target_name}.depends'))
+        if depends_str: # document dependencies as cmake comments
+            cm_fh.write(f"# depends on: {depends_str}\n")
+        cm_fh.write('install(CODE ' + bracket_string(cb_fh) + ')\n')
+        cb_fh.close()
 
 
 def bracket_string(cb_fh: IO[str]):
