@@ -4321,13 +4321,13 @@ def write_postbuild_commands(cm_fh, scope):
             cm_fh.write(f'\n')
 
             cm_fh.write(f'add_custom_command(TARGET "{scope.TARGET}" POST_BUILD\n')
-            cm_fh.write(f'{spaces(1)}COMMAND ${{CMAKE_COMMAND}} -E echo QMAKE_POST_LINK: {cmd_str_short} \\(workdir: ${{CMAKE_CURRENT_BINARY_DIR}}\\)\n')
+            cm_fh.write(f'{spaces(1)}COMMAND ${{CMAKE_COMMAND}} -E echo "-- Running:" {cmd_str_short} \\(workdir: ${{CMAKE_CURRENT_BINARY_DIR}}\\)\n')
             cm_fh.write(f"{spaces(1)}COMMAND {cmd_str}\n")
             cm_fh.write(f'{spaces(1)}VERBATIM\n')
             cm_fh.write(f")\n")
             # example cmake output:
             # [ 12%] Linking CXX shared module libQtGui.so
-            # QMAKE_POST_LINK: cmake -E copy libQtGui.so QtGui.abi3.so (workdir: /build/tmp5rh0xism/QtGui)
+            # -- Running: cmake -E copy libQtGui.so QtGui.abi3.so (workdir: /build/tmp5rh0xism/QtGui)
             # [ 12%] Built target QtGui
         else:
             cm_fh.write(f"\n# TODO implement:\n")
