@@ -106,6 +106,12 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
         "--debug", dest="debug", action="store_true", help="Turn on all debug output"
     )
     parser.add_argument(
+        "--debug-dump-files",
+        dest="debug_dump_files",
+        action="store_true",
+        help="Dump all input files and output files.",
+    )
+    parser.add_argument(
         "--debug-parser",
         dest="debug_parser",
         action="store_true",
@@ -5399,6 +5405,12 @@ def should_convert_project_after_parsing(
     return True
 
 
+def dump_file(file):
+    with open(file, "r") as fh:
+        for num, line in enumerate(fh, start=1):
+            print(f"{file}:{num} {line}", end="")
+
+
 def main(command_line_args: Optional[List[str]] = None) -> None:
     # Be sure of proper Python version
     assert sys.version_info >= (3, 7)
@@ -5434,6 +5446,10 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
         if not should_convert_project(project_file_absolute_path, args.ignore_skip_marker):
             print(f'Skipping conversion of project: "{project_file_absolute_path}"')
             continue
+
+        if args.debug_dump_files or args.debug:
+            print(f"\nReading input file: {file}:")
+            dump_file(file)
 
         parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
 
@@ -5496,6 +5512,11 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             copy_generated_file_to_final_location(
                 file_scope, output_file, keep_temporary_files=args.keep_temporary_files
             )
+
+        if args.debug_dump_files or args.debug:
+            print(f"\nWriting output file: {output_file}:")
+            dump_file(output_file)
+
         os.chdir(backup_current_dir)
 
 
