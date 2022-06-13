@@ -4507,13 +4507,13 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
 
             if not done_copy_header:
                 cm_fh.write(f'{spaces(indent)}install_target_files(\n')
-                cm_fh.write(f'{spaces(indent + 1)}TARGET {shlex.quote(target_str)}\n')
-                cm_fh.write(f'{spaces(indent + 1)}DESTINATION {shlex.quote(dst_abs)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}TARGET {cmake_string(target_str)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}DESTINATION {cmake_string(dst_abs)}\n')
                 cm_fh.write(f'{spaces(indent + 1)}SOURCES\n')
                 done_copy_header = True
 
             src_abs = os.path.join(project_workdir, src)
-            cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(src_abs)}\n')
+            cm_fh.write(f'{spaces(indent + 1)}{cmake_string(src_abs)}\n')
 
         if done_copy_header:
             cm_fh.write(f')\n') # end of install_target_files
@@ -4543,13 +4543,13 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
                 if last_was_key:
                     if key_expr.match(arg): # next key
                         cm_fh.write('\n')
-                        cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(arg)}')
+                        cm_fh.write(f'{spaces(indent + 1)}{cmake_string(arg)}')
                         last_was_key = True
                     else: # value
-                        cm_fh.write(f' {shlex.quote(arg)}\n')
+                        cm_fh.write(f' {cmake_string(arg)}\n')
                         last_was_key = False
                     continue
-                cm_fh.write(f'{spaces(indent + 1)}{shlex.quote(arg)}')
+                cm_fh.write(f'{spaces(indent + 1)}{cmake_string(arg)}')
                 if key_expr.match(arg): # key
                     last_was_key = True
                 else:
@@ -4557,6 +4557,31 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             if last_was_key:
                 cm_fh.write('\n')
             cm_fh.write(f'{spaces(indent)})\n')
+
+
+_cmake_string_is_unsafe = re.compile(r'[^\w@%+=:,./-]', re.ASCII).search
+# note: [^...] = negated char class -> safe chars are \w@%+=:,./-
+
+#_cmake_string_replace = re.compile(r'([\\$"!])', re.ASCII).sub # TODO test e2e
+# dont escape $. example: ${CMAKE_INSTALL_PREFIX}
+# TODO? dont escape !
+_cmake_string_replace = re.compile(r'([\\"!])', re.ASCII).sub # TODO test e2e
+
+def cmake_string(s):
+    """
+    Return a cmake-escaped version of the string *s*.
+    Wrap string in double-quotes when necessary.
+    Based on shlex.quote (wrap string in single-quotes).
+    Cmake requires strings in double-quotes.
+    """
+    if not s:
+        return '""'
+    if _cmake_string_is_unsafe(s) is None:
+        return s
+    return '"' + _cmake_string_replace(r"\\\1", s) + '"'
+
+# test
+#assert cmake_string('a"b\\c$d$(e)!f\tg\nh\ri') == '"a\\"b\\\\c\\$d\\$(e)\\!f\tg\nh\ri"'
 
 
 # TODO remove? not used
