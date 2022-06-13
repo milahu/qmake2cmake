@@ -4349,7 +4349,6 @@ def write_user_variables(io_string, binary_name, scope, indent=0):
     key_list = list(filter(lambda k: not k in qmake_keys and key_regex.match(k), scope.keys))
     if not key_list:
         return
-    io_string.write(f"{spaces(indent)}# set user variables\n")
     for key in key_list:
         if key in qmake_keys:
             continue
