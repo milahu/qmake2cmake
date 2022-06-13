@@ -4505,8 +4505,7 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             # f"execute_process(COMMAND ${{CMAKE_COMMAND}} -E copy {src} {dst}/\n')"
 
             if not done_copy_header:
-                cm_fh.write(f'{spaces(indent)}install_target_files(\n')
-                cm_fh.write(f'{spaces(indent + 1)}TARGET {cmake_string(target_str)}\n')
+                cm_fh.write(f'{spaces(indent)}install_target_files(TARGET {cmake_string(target_str)}\n')
                 cm_fh.write(f'{spaces(indent + 1)}DESTINATION {cmake_string(dst_abs)}\n')
                 cm_fh.write(f'{spaces(indent + 1)}SOURCES\n')
                 done_copy_header = True
@@ -4532,8 +4531,7 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
             cmd_str = cmd_str.replace("$(SOURCE_ROOT)", "${CMAKE_SOURCE_DIR}")
 
             cmd_str_esc = cmd_str.replace('"', '\\"')
-            cm_fh.write(f'{spaces(indent)}install_target_command(\n')
-            cm_fh.write(f'{spaces(indent + 1)}TARGET "{target_str}"\n')
+            cm_fh.write(f'{spaces(indent)}install_target_command(TARGET "{target_str}"\n')
             #cm_fh.write(f'{spaces(indent + 1)}WORKING_DIRECTORY "{dst_abs}"\n')
             cm_fh.write(f'{spaces(indent + 1)}COMMAND\n')
             last_was_key = False
