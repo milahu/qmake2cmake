@@ -103,49 +103,57 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
         help="Specify the minimum Qt version for the converted project.",
     )
     parser.add_argument(
-        "--debug", dest="debug", action="store_true", help="Turn on all debug output"
+        "--debug", dest="debug", action="store_true", help="Turn on all debug output",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG", False),
     )
     parser.add_argument(
         "--debug-dump-files",
         dest="debug_dump_files",
         action="store_true",
         help="Dump all input files and output files.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_DUMP_FILES", False),
     )
     parser.add_argument(
         "--debug-parser",
         dest="debug_parser",
         action="store_true",
         help="Print debug output from qmake parser.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSER", False),
     )
     parser.add_argument(
         "--debug-parse-result",
         dest="debug_parse_result",
         action="store_true",
         help="Dump the qmake parser result.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSE_RESULT", False),
     )
     parser.add_argument(
         "--debug-parse-dictionary",
         dest="debug_parse_dictionary",
         action="store_true",
         help="Dump the qmake parser result as dictionary.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSE_DICTIONARY", False),
     )
     parser.add_argument(
         "--debug-pro-structure",
         dest="debug_pro_structure",
         action="store_true",
         help="Dump the structure of the qmake .pro-file.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PRO_STRUCTURE", False),
     )
     parser.add_argument(
         "--debug-full-pro-structure",
         dest="debug_full_pro_structure",
         action="store_true",
         help="Dump the full structure of the qmake .pro-file " "(with includes).",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_FULL_PRO_STRUCTURE", False),
     )
     parser.add_argument(
         "--debug-special-case-preservation",
         dest="debug_special_case_preservation",
         action="store_true",
         help="Show all git commands and file copies.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_SPECIAL_CASE_PRESERVATION", False),
     )
 
     parser.add_argument(
