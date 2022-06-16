@@ -2024,6 +2024,15 @@ def handle_subdir(
         # Print any requires() blocks.
         sub_io_string.write(expand_project_requirements(scope, skip_message=True))
 
+        add_subdirectory_fn = "add_subdirectory"
+        if "ordered" in scope.get("CONFIG"):
+            # build subdirectories in order
+            # qmake:
+            # TEMPLATE = subdirs
+            # CONFIG += ordered
+            # SUBDIRS = a b c
+            add_subdirectory_fn = "add_subdirectory_ordered"
+
         # Print the groups.
         ind = spaces(indent)
         for condition_key in grouped_sub_dirs:
@@ -2033,8 +2042,10 @@ def handle_subdir(
                 cond_ind += "    "
 
             sub_dir_list_by_key = grouped_sub_dirs.get(condition_key, [])
+
             for subdir_name in sub_dir_list_by_key:
-                sub_io_string.write(f"{cond_ind}add_subdirectory({subdir_name})\n")
+                sub_io_string.write(f"{cond_ind}{add_subdirectory_fn}({subdir_name})\n")
+
             if condition_key:
                 sub_io_string.write(f"{ind}endif()\n")
 
@@ -4050,6 +4061,7 @@ include(GNUInstallDirs)
     # cmake helper functions:
     # install_target_files
     # install_target_command
+    # add_subdirectory_ordered
     # TODO setup.py: install helper_functions.cmake
     helper_functions_path = str(pathlib.PurePath(__file__).parent / "helper_functions.cmake")
     with open(helper_functions_path, "r") as f:
