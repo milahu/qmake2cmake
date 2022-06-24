@@ -3882,9 +3882,16 @@ def write_find_package_section(
         if p.components is not None:
             qt_components += p.components
     if qt_components:
-        if "Core" in qt_components:
-            qt_components.remove("Core")
         qt_components = sorted(qt_components)
+        if next((c for c in qt_components if c.startswith("WebEngine")), None):
+            # all webengine components require the WebEngineCore component
+            if "WebEngineCore" in qt_components:
+                qt_components.remove("WebEngineCore") # avoid duplicate
+            if is_required:
+                qt_components = ["WebEngineCore"] + qt_components
+        # all components require the Core component
+        if "Core" in qt_components:
+            qt_components.remove("Core") # avoid duplicate
         if is_required:
             qt_components = ["Core"] + qt_components
         qt_package = LibraryMapping("unknown", qt_package_name, "unknown", components=qt_components)
