@@ -332,7 +332,11 @@ _qt_library_map = [
         components=["WaylandCompositor"],
     ),
     LibraryMapping("webchannel", "Qt6", "Qt::WebChannel", components=["WebChannel"]),
-    LibraryMapping("webengine", "Qt6", "Qt::WebEngine", components=["WebEngine"]),
+    # TODO is "webengine" used in qmake?
+    # qtwebengine provides QtWebEngineCore QtWebEngineQuick QtWebEngineWidgets
+    # but no QtWebEngine
+    LibraryMapping("webengine", "Qt6", "Qt::WebEngineCore", components=["WebEngineCore"]),
+    LibraryMapping("webenginecore", "Qt6", "Qt::WebEngineCore", components=["WebEngineCore"]),
     LibraryMapping("webenginequick", "Qt6", "Qt::WebEngineQuick", components=["WebEngineQuick"]),
     LibraryMapping(
         "webenginewidgets", "Qt6", "Qt::WebEngineWidgets", components=["WebEngineWidgets"]
