@@ -153,12 +153,14 @@ qt_add_executable(myapp WIN32
     output = convert("lib_shared")
     assert(r"""
 qt_add_library(lib_shared
-""" in output)
+    lib.cpp
+)""" in output)
 
     output = convert("lib_static")
     assert(r"""
 qt_add_library(lib_static STATIC
-""" in output)
+    lib.cpp
+)""" in output)
 
     output = convert("plugin_shared")
     assert(r"""
