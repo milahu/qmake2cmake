@@ -71,7 +71,7 @@ def convert(base_name: str,
         convert_qmake_to_cmake(["-o", str(output_file_path), str(pro_file_path),
                                 "--min-qt-version", min_qt_version])
         if debug_mode:
-            output_dir = tempfile.gettempdir() + "/qmake2cmake"
+            output_dir = tempfile.gettempdir() + "/qmake2cmake/" + base_name
             if not os.path.isdir(output_dir):
                 os.mkdir(output_dir)
             shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
