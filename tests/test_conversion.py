@@ -46,7 +46,7 @@ from typing import Callable, Optional
 debug_mode = bool(os.environ.get("DEBUG_QMAKE2CMAKE_TEST_CONVERSION"))
 test_script_dir = pathlib.Path(__file__).parent.resolve()
 test_data_dir = test_script_dir.joinpath("data", "conversion")
-
+default_min_qt_version = "6.2.0"
 
 def compare_expected_output_directories(actual: str, expected: str):
     dc = filecmp.dircmp(actual, expected)
@@ -55,7 +55,7 @@ def compare_expected_output_directories(actual: str, expected: str):
 
 def convert(base_name: str,
             *,
-            min_qt_version: str = "6.2.0",
+            min_qt_version: str = default_min_qt_version,
             after_conversion_hook: Optional[Callable[[str], None]] = None):
     '''Converts {base_name}.pro to CMake in a temporary directory.
 
@@ -72,6 +72,9 @@ def convert(base_name: str,
                                 "--min-qt-version", min_qt_version])
         if debug_mode:
             output_dir = tempfile.gettempdir() + "/qmake2cmake/" + base_name
+            if min_qt_version != default_min_qt_version:
+                output_dir += "-"
+                output_dir += min_qt_version
             if not os.path.isdir(output_dir):
                 os.mkdir(output_dir)
             shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
