@@ -167,13 +167,29 @@ qt_add_library(lib_static STATIC
 
     output = convert("plugin_shared")
     assert(r"""
-qt_add_plugin(plugin_shared
-""" in output)
+qt_add_plugin(plugin_shared)
+target_sources(plugin_shared PRIVATE
+    lib.cpp
+)""" in output)
 
     output = convert("plugin_static")
     assert(r"""
+qt_add_plugin(plugin_static STATIC)
+target_sources(plugin_static PRIVATE
+    lib.cpp
+)""" in output)
+
+    output = convert("plugin_shared", min_qt_version = "6.5.0")
+    assert(r"""
+qt_add_plugin(plugin_shared
+    lib.cpp
+)""" in output)
+
+    output = convert("plugin_static", min_qt_version = "6.5.0")
+    assert(r"""
 qt_add_plugin(plugin_static STATIC
-""" in output)
+    lib.cpp
+)""" in output)
 
 
 def test_qml_modules():

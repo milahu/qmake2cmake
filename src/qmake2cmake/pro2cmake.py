@@ -4069,6 +4069,9 @@ def write_app_or_lib(
 
     add_target = ""
 
+    global min_qt_version
+    qt_add_plugin_supports_sources = min_qt_version >= version.parse("6.5")
+
     if is_plugin and is_qml_module:
         extra_args = [f"PLUGIN_TARGET {binary_name}"]
         io_string = io.StringIO()
@@ -4099,6 +4102,9 @@ def write_app_or_lib(
             add_target = f"qt_add_library({binary_name}"
         if "static" in config:
             add_target += " STATIC"
+        if is_plugin and not qt_add_plugin_supports_sources:
+            add_target += ")\n"
+            add_target += f"target_sources({binary_name} PRIVATE"
 
     write_all_source_file_lists(cm_fh, scope, add_target, indent=0)
     cm_fh.write(")\n")
