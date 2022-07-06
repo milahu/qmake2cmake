@@ -335,6 +335,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
     script_path = os.path.dirname(os.path.abspath(__file__))
     pro2cmake = os.path.join(script_path, "pro2cmake.py")
 
+    backup_current_dir = os.getcwd()
     os.chdir(args.input_dir)
 
     all_files = find_all_pro_files(args)
@@ -355,6 +356,8 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
         )
         for f in failed_files:
             print(f'    "{f}"')
+
+    os.chdir(backup_current_dir)
 
 
 if __name__ == "__main__":
