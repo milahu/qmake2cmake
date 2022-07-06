@@ -11,7 +11,7 @@ b.files = /src/b/
 INSTALLS += b
 
 c.path = /dst
-c.files = /src/c.txt
+c.files = /src/c1.txt /src/c2.txt
 INSTALLS += c
 
 distinfo.depends = install_lib install_a install_b install_c

@@ -30,7 +30,6 @@
 from qmake2cmake.pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
 from qmake2cmake.pro2cmake import main as convert_qmake_to_cmake # qmake2cmake
 from qmake2cmake.run_pro2cmake import main as convert_qmake_to_cmake_all # qmake2cmake_all
-import tempfile
 
 import filecmp
 import functools
@@ -48,6 +47,8 @@ debug_mode = bool(os.environ.get("DEBUG_QMAKE2CMAKE_TEST_CONVERSION"))
 test_script_dir = pathlib.Path(__file__).parent.resolve()
 test_data_dir = test_script_dir.joinpath("data", "conversion")
 
+if debug_mode:
+    print("running test with debug_mode=True")
 
 def compare_expected_output_directories(actual: str, expected: str):
     dc = filecmp.dircmp(actual, expected)
@@ -71,7 +72,8 @@ def compare_expected_output_directories(actual: str, expected: str):
             print(f"git status")
             print(f"git commit")
         else:
-            print("set DEBUG_QMAKE2CMAKE_TEST_CONVERSION=1 to keep the actual files")
+            print("to keep the actual files, run:")
+            print("  DEBUG_QMAKE2CMAKE_TEST_CONVERSION=1 pytest")
     assert(dc.diff_files == [])
 
 
@@ -92,22 +94,23 @@ def convert(
     pro_file_path = test_data_dir.joinpath(pro_file_name)
     assert(pro_file_path.exists())
 
-    if True: # keep indent
-        tmp_dir = tempfile.TemporaryDirectory(prefix="testqmake2cmake")
-        tmp_dir_path = pathlib.Path(tmp_dir.name)
-        output_file_path = tmp_dir_path.joinpath("CMakeLists.txt")
+    with tempfile.TemporaryDirectory(prefix="testqmake2cmake") as tmp_dir: # auto delete
 
         convert_fn = convert_qmake_to_cmake
         if recursive:
             convert_fn = convert_qmake_to_cmake_all
 
+        tmp_dir_path = pathlib.Path(tmp_dir)
+        output_file_path = tmp_dir_path.joinpath("CMakeLists.txt")
+
         convert_args = []
         convert_args += ["--min-qt-version", min_qt_version]
         if recursive:
-            convert_args += ["--output-dir", tmp_dir_path]
+            convert_args += ["--output-dir", tmp_dir]
             convert_args += ["--main-file", pro_file_path.name]
             convert_args += [pro_file_path.parent]
         else:
+            # TODO also use --output-dir. not tested ...
             convert_args += ["--output-file", output_file_path]
             convert_args += [pro_file_path]
 
@@ -117,22 +120,19 @@ def convert(
         convert_fn(convert_args)
 
         if debug_mode:
-            output_dir = tempfile.gettempdir() + "/qmake2cmake"
-            if not os.path.isdir(output_dir):
-                os.mkdir(output_dir)
-            shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
+            # TODO keep files only on failed test
+            # tempdirs on linux: /run/user/$UID/testqmake2cmake*
+            tmp_dir_persistent = tempfile.mkdtemp(prefix="testqmake2cmake") # manual delete
+            shutil.copytree(tmp_dir, tmp_dir_persistent, dirs_exist_ok=True)
+            print(f"test_conversion.py: keeping temporary files: {tmp_dir_persistent}")
 
         f = open(output_file_path, "r")
         assert(f)
         content = f.read()
         assert(content)
-        if after_conversion_hook is not None:
-            after_conversion_hook(tmp_dir_path)
 
-        if debug_mode:
-            print(f"test_conversion.py: keeping temporary files in {tmp_dir.name}")
-        else:
-            tmp_dir.cleanup()
+        if after_conversion_hook:
+            after_conversion_hook(actual=tmp_dir)
 
         return content
 
@@ -142,13 +142,12 @@ def convert_and_compare_expected_output(
         rel_expected_output_dir: str,
         recursive: bool = False,
     ):
-    abs_expected_output_dir = test_data_dir.joinpath(rel_expected_output_dir)
+    expected = str(test_data_dir.joinpath(rel_expected_output_dir))
+    def after_conversion_hook(actual: str):
+        compare_expected_output_directories(expected, actual)
     convert(
         pro_base_name,
-        after_conversion_hook=functools.partial(
-            compare_expected_output_directories,
-            expected=abs_expected_output_dir
-        ),
+        after_conversion_hook=after_conversion_hook,
         recursive=recursive
     )
 
@@ -187,7 +186,7 @@ def test_subdirs():
     convert_and_compare_expected_output("subdirs/subdirs", "subdirs/expected", recursive=True)
 
 
-def test_common_project_types():
+def test_common_project_types__app():
     output = convert("app")
     assert(r"""
 qt_add_executable(app WIN32 MACOSX_BUNDLE)
@@ -196,6 +195,7 @@ target_sources(app PRIVATE
 )
 """ in output)
 
+def test_common_project_types__app_cmdline():
     output = convert("app_cmdline")
     assert(r"""
 qt_add_executable(myapp)
@@ -204,6 +204,7 @@ target_sources(myapp PRIVATE
 )
 """ in output)
 
+def test_common_project_types__app_console():
     output = convert("app_console")
     assert(r"""
 qt_add_executable(myapp MACOSX_BUNDLE)
@@ -212,6 +213,7 @@ target_sources(myapp PRIVATE
 )
 """ in output)
 
+def test_common_project_types__app_nonbundle():
     output = convert("app_nonbundle")
     assert(r"""
 qt_add_executable(myapp WIN32)
@@ -220,6 +222,7 @@ target_sources(myapp PRIVATE
 )
 """ in output)
 
+def test_common_project_types__lib_shared():
     output = convert("lib_shared")
     assert(r"""
 qt_add_library(lib_shared)
@@ -228,6 +231,7 @@ target_sources(lib_shared PRIVATE
 )
 """ in output)
 
+def test_common_project_types__lib_static():
     output = convert("lib_static")
     assert(r"""
 qt_add_library(lib_static STATIC)
@@ -236,6 +240,7 @@ target_sources(lib_static PRIVATE
 )
 """ in output)
 
+def test_common_project_types__plugin_shared():
     output = convert("plugin_shared")
     assert(r"""
 qt_add_plugin(plugin_shared)
@@ -244,6 +249,7 @@ target_sources(plugin_shared PRIVATE
 )
 """ in output)
 
+def test_common_project_types__plugin_static():
     output = convert("plugin_static")
     assert(r"""
 qt_add_plugin(plugin_static STATIC)
@@ -253,7 +259,7 @@ target_sources(plugin_static PRIVATE
 """ in output)
 
 
-def test_qml_modules():
+def test_qml_modules__app_qml_module():
     output = convert("app_qml_module")
     assert(r"""
 qt_add_executable(myapp WIN32 MACOSX_BUNDLE)
@@ -264,6 +270,10 @@ target_sources(myapp PRIVATE
 qt_add_qml_module(myapp
     URI DonkeySimulator
     VERSION 1.0
+    # qml types are generated by cmake, but not by qmake
+    # multiple qml types produce the runtime error
+    # "Cannot add multiple registrations for x"
+    NO_GENERATE_QMLTYPES
     QML_FILES
         donkey.qml
         waggle_ears.js
@@ -274,6 +284,7 @@ qt_add_qml_module(myapp
 )
 """ in output)
 
+def test_qml_modules__lib_qml_module():
     output = convert("lib_qml_module")
     assert(r"""
 qt_add_library(lib_qml_module)
@@ -283,6 +294,10 @@ target_sources(lib_qml_module PRIVATE
 qt_add_qml_module(lib_qml_module
     URI DonkeySimulator
     VERSION 1.0
+    # qml types are generated by cmake, but not by qmake
+    # multiple qml types produce the runtime error
+    # "Cannot add multiple registrations for x"
+    NO_GENERATE_QMLTYPES
     QML_FILES
         donkey.qml
         waggle_ears.js
@@ -291,11 +306,16 @@ qt_add_qml_module(lib_qml_module
         hoofs.ogg
 )""" in output)
 
+def test_qml_modules__plugin_qml_module():
     output = convert("plugin_qml_module")
     assert(r"""
 qt_add_qml_module(plugin_qml_module
     URI DonkeySimulator
     VERSION 1.0
+    # qml types are generated by cmake, but not by qmake
+    # multiple qml types produce the runtime error
+    # "Cannot add multiple registrations for x"
+    NO_GENERATE_QMLTYPES
     QML_FILES
         donkey.qml
         waggle_ears.js
@@ -340,8 +360,7 @@ install(TARGETS install_targets
 )
 
 # install_c
-install_target_files(
-    TARGET "install_targets: c"
+install_target_files(TARGET "install_targets: c"
     DESTINATION /dst
     SOURCES
     /src/c1.txt
@@ -350,8 +369,7 @@ install_target_files(
 
 # install_a
 # depends on: install_c
-install_target_files(
-    TARGET "install_targets: a"
+install_target_files(TARGET "install_targets: a"
     DESTINATION /dst
     SOURCES
     /src/a
@@ -359,8 +377,7 @@ install_target_files(
 
 # install_b
 # depends on: install_a
-install_target_files(
-    TARGET "install_targets: b"
+install_target_files(TARGET "install_targets: b"
     DESTINATION /dst
     SOURCES
     /src/b/
@@ -368,8 +385,7 @@ install_target_files(
 
 # install_distinfo
 # depends on: install_lib install_a install_b install_c
-install_target_command(
-    TARGET "install_targets: distinfo"
+install_target_command(TARGET "install_targets: distinfo"
     COMMAND
     sip-distinfo
     --inventory /dst/inventory.txt

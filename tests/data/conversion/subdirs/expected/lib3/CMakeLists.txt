@@ -1,6 +1,6 @@
 qt_add_library(lib3)
 target_sources(lib3 PRIVATE
-    lib3/lib3.cpp
+    lib3.cpp
 )
 target_link_libraries(lib3 PUBLIC
     Qt::Core

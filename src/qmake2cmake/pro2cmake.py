@@ -90,6 +90,8 @@ cmake_version_string = "3.16"
 cmake_api_version = 3
 min_qt_version = version.parse("1.0.0")
 
+debug = False
+
 
 def _parse_commandline(command_line_args: Optional[List[str]] = None):
     parser = ArgumentParser(
@@ -196,6 +198,20 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
     )
 
     parser.add_argument(
+        "--input-dir",
+        dest="input_dir",
+        type=str,
+        help="Path of the main input directory. Default is the parent directory of each input file.",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        type=str,
+        help="Path of the main output directory. Default is the parent directory of each input file.",
+    )
+
+    parser.add_argument(
         "-o",
         "--output-file",
         dest="output_file",
@@ -205,18 +221,11 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
     )
 
     parser.add_argument(
-        "--output-dir",
-        dest="output_dir",
-        action="store",
-        help="Path to directory for output files. Default is the current workdir.",
-    )
-
-    parser.add_argument(
-        "input_files",
-        metavar="<.pro|.pri file>",
+        "files",
+        metavar="<.pro/.pri file>",
         type=str,
         nargs="+",
-        help="The .pro or .pri input files",
+        help="The .pro/.pri file to process",
     )
     return parser.parse_args(command_line_args)
 
@@ -296,9 +305,18 @@ def is_manual_test_project(project_file_path: str = "") -> bool:
     return project_relative_path.startswith("tests/manual")
 
 
+@lru_cache(maxsize=None)
 def find_file_walking_parent_dirs(file_name: str, project_file_path: str = "") -> str:
     assert file_name
+    if not os.path.isabs(project_file_path):
+        print(
+            f"Warning: could not find {file_name} file, given path is not an "
+            f"absolute path: {project_file_path}"
+        )
+        return ""
+
     cwd = os.path.dirname(project_file_path)
+
     while os.path.isdir(cwd):
         maybe_file = posixpath.join(cwd, file_name)
         if os.path.isfile(maybe_file):
@@ -309,6 +327,7 @@ def find_file_walking_parent_dirs(file_name: str, project_file_path: str = "") -
             if last_cwd == cwd:
                 # reached the top level directory, stop looking
                 break
+
     return ""
 
 
@@ -976,6 +995,7 @@ class Scope(object):
     SCOPE_ID: int = 1
     _main_scope: Scope = None
     _user_variables: Optional[dict] = None # only in main scope
+    _input_dir: str or None = None # main input directory
 
     def __init__(
         self,
@@ -984,6 +1004,7 @@ class Scope(object):
         qmake_file: str,
         condition: str = "",
         base_dir: str = "",
+        input_dir: str or None = None,
         operations: Union[Dict[str, List[Operation]], None] = None,
         parent_include_line_no: int = -1,
     ) -> None:
@@ -1018,8 +1039,26 @@ class Scope(object):
 
         self._scope_id = Scope.SCOPE_ID
         Scope.SCOPE_ID += 1
+
         self._file = qmake_file
         self._file_absolute_path = os.path.abspath(qmake_file)
+        self._file_absolute_dir = os.path.dirname(self._file_absolute_path)
+        # note: basedir != input_dir
+        self._input_dir = input_dir or self._main_scope._input_dir or self._file_absolute_dir
+        self._file_relative_path = os.path.relpath(self._file_absolute_path, self._input_dir)
+        self._file_relative_dir = os.path.dirname(self._file_relative_path) or "."
+
+        if debug:
+            print(f"Scope.__init__: os.getcwd() = {os.getcwd()}")
+            print(f"Scope.__init__: input_dir = {input_dir}")
+            print(f"Scope.__init__: self._main_scope._input_dir = {self._main_scope._input_dir}")
+            print(f"Scope.__init__: self._file_absolute_dir = {self._file_absolute_dir}")
+            print(f"Scope.__init__: self._input_dir = {self._input_dir}")
+            print(f"Scope.__init__: self._file = {self._file}")
+            print(f"Scope.__init__: self._file_absolute_path = {self._file_absolute_path}")
+            print(f"Scope.__init__: self._file_relative_path = {self._file_relative_path}")
+            print(f"Scope.__init__: self._input_dir_abs = {self._input_dir_abs}")
+
         self._condition = map_condition(condition)
         self._children = []  # type: List[Scope]
         self._included_children = []  # type: List[Scope]
@@ -1116,6 +1155,7 @@ class Scope(object):
         statements,
         cond: str = "",
         base_dir: str = "",
+        input_dir: str or None = None,
         project_file_content: str = "",
         parent_include_line_no: int = -1,
     ) -> Scope:
@@ -1124,6 +1164,7 @@ class Scope(object):
             qmake_file=file,
             condition=cond,
             base_dir=base_dir,
+            input_dir=input_dir,
             parent_include_line_no=parent_include_line_no,
         )
         for statement in statements:
@@ -1227,9 +1268,18 @@ class Scope(object):
     @property
     def original_cmake_lists_path(self) -> str:
         assert self.basedir
-        if self.basedir == ".":
-            return "CMakeLists.txt" # dont return ./CMakeLists.txt
-        return os.path.join(self.basedir, "CMakeLists.txt")
+        if self._file_relative_dir == ".":
+            return "CMakeLists.txt"
+        #return os.path.join(self.basedir, "CMakeLists.txt")
+        # FIXME?
+        if False:
+            print(f"self._input_dir = {self._input_dir}")
+            print(f"self._file_absolute_path = {self._file_absolute_path}")
+            print(f"self._file_relative_path = {self._file_relative_path}")
+            print(f"self._file_relative_dir = {self._file_relative_dir}") # FIXME?
+        #return os.path.join(self.basedir, "CMakeLists.txt")
+        #return os.path.join(self.file_absolute_path, "CMakeLists.txt")
+        return os.path.join(self._file_relative_dir, "CMakeLists.txt") # FIXME wrong
 
     @property
     def condition(self) -> str:
@@ -1433,29 +1483,21 @@ class Scope(object):
             r = self._expand_value(f)
             expanded_files += r
 
-        mapped_files = list(
-            map(lambda f: map_to_file(f, self, is_include=is_include), expanded_files)
-        )
+        mapped_files = map(lambda f: map_to_file(f, self, is_include=is_include), expanded_files)
 
         if use_vpath:
-            result = list(
-                map(
-                    lambda f: handle_vpath(f, self.basedir, self.get("VPATH", inherit=True)),
-                    mapped_files,
-                )
-            )
+            f = lambda p: handle_vpath(p, self.basedir, self.get("VPATH", inherit=True))
+            result = map(f, mapped_files)
         else:
             result = mapped_files
 
         # strip ${CMAKE_CURRENT_SOURCE_DIR}:
-        result = list(
-            map(lambda f: f[28:] if f.startswith("${CMAKE_CURRENT_SOURCE_DIR}/") else f, result)
-        )
+        result = map(lambda f: f[28:] if f.startswith("${CMAKE_CURRENT_SOURCE_DIR}/") else f, result)
 
         # strip leading ./:
-        result = list(map(lambda f: trim_leading_dot(f), result))
+        result = map(lambda f: trim_leading_dot(f), result)
 
-        return result
+        return list(result)
 
     def get_files(
         self, key: str, *, use_vpath: bool = False, is_include: bool = False
@@ -1865,13 +1907,18 @@ def handle_subdir(
     # Parse the sub-project, and retrieve the information needed for the top-level find_package
     # calls.  This does not actually convert the file.
     def extend_library_dependencies(subdir_path: str, current_pro_path: str):
+        debug and print(f"extend_library_dependencies: is_sub_project={is_sub_project}")
+        debug and print(f"extend_library_dependencies: out_library_dependencies={out_library_dependencies}")
+        # is_sub_project=True
         if is_sub_project or out_library_dependencies is None:
             return
+        debug and print(f"extend_library_dependencies: write_subdir_marker({subdir_path}, {current_pro_path})")
         write_subdir_marker(subdir_path, current_pro_path)
+        debug and print(f"extend_library_dependencies: subdir_path={subdir_path}. isdir? {os.path.isdir(subdir_path)}")
         if os.path.isdir(subdir_path):
             subdir_path = re.sub("/+$", "", subdir_path)
             subdir_path += "/" + os.path.basename(subdir_path) + ".pro"
-        print(f'Analyzing "{subdir_path}"...', flush=True)
+        print(f'Analyzing: {subdir_path}', flush=True)
         file_contents = ""
         with open(subdir_path, "r") as file_fd:
             file_contents = file_fd.read()
@@ -1882,8 +1929,10 @@ def handle_subdir(
         scopes = flatten_scopes(scope)
         scopes = merge_scopes(scopes)
         libdeps = extract_library_dependencies(scope, scopes)
+        debug and print(f"extend_library_dependencies: libdeps.optional_libs = {libdeps.optional_libs}")
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
+        debug and print(f"extend_library_dependencies: scope.TEMPLATE = {scope.TEMPLATE}")
         if scope.TEMPLATE == "subdirs":
             all_subdirs: List[str] = []
             seen: Set[str] = set()
@@ -1894,8 +1943,10 @@ def handle_subdir(
                     if d not in seen:
                         seen.add(d)
                         all_subdirs.append(d)
+            debug and print(f"extend_library_dependencies: all_subdirs = {all_subdirs}")
             for sd in all_subdirs:
                 sd = apply_subdirs_modifiers(scope, sd)
+                # recursion
                 extend_library_dependencies(
                     os.path.dirname(scope.file) + "/" + sd, scope.file_absolute_path
                 )
@@ -1909,15 +1960,24 @@ def handle_subdir(
         indent: int = 0,
         current_conditions: FrozenSet[str] = frozenset(),
     ):
+        debug and print(f"handle_subdir_helper")
         for sd in scope.get_files("SUBDIRS"):
+            debug and print(f"handle_subdir_helper: sd = {sd}. isdir? {os.path.isdir(sd)}")
+            debug and print(f"handle_subdir_helper: os.getcwd() = {os.getcwd()}")
+            debug and print(f"handle_subdir_helper: scope._file = {scope._file}")
             sd = apply_subdirs_modifiers(scope, sd)
 
             # Collect info about conditions and SUBDIR assignments in the
             # current scope.
+            # note: sd is relative to os.getcwd()
+            # FIXME use absolute path
             if os.path.isdir(sd) or sd.startswith("-"):
+                debug and print(f"handle_subdir_helper: collect_subdir_info({sd})")
                 collect_subdir_info(sd, current_conditions=current_conditions)
                 if sd.startswith("-"):
                     sd = sd[1:]
+                # FIXME not reached?
+                debug and print(f"handle_subdir_helper: extend_library_dependencies({sd})") # ok
                 extend_library_dependencies(sd, scope.file_absolute_path)
             # For the file case, directly write into the file handle.
             elif os.path.isfile(sd):
@@ -2262,11 +2322,13 @@ def write_source_file_list(
     for key in keys:
         sources += scope.get_files(key, use_vpath=True)
 
+    debug and print(f"write_source_file_list: sources = {sources}")
+
     # Remove duplicates, like in the case when NO_PCH_SOURCES ends up
     # adding the file to SOURCES, but SOURCES might have already
     # contained it before. Preserves order in Python 3.7+ because
     # dict keys are ordered.
-    sources = list(dict.fromkeys(sources))
+    sources = list(set(sources))
 
     write_list(cm_fh, sources, cmake_parameter, indent, header=header, footer=footer)
 
@@ -2364,6 +2426,10 @@ def write_compile_options(
     cm_fh: IO[str], scope: Scope, cmake_parameter: str, *, indent: int = 0, footer: str = ""
 ):
     compile_options = [d for d in scope.expand("QMAKE_CXXFLAGS") if not d.startswith("-D")]
+    # TODO test
+    # *-g++* {
+    #     QMAKE_CXXFLAGS += -O1
+    # }
 
     write_list(cm_fh, compile_options, cmake_parameter, indent, footer=footer)
 
@@ -2813,6 +2879,7 @@ def write_set_source_files_properties(
 def write_target_sources(
     cm_fh: IO[str], target: str, sources: List[str], visibility: str = "PRIVATE", indent: int = 0
 ):
+    debug and print(f"write_target_sources: sources = {sources}")
     command_name = "target_sources"
     header = f"{command_name}({target} {visibility}\n"
     write_list(cm_fh, sources, "", indent, footer=")", header=header)
@@ -3922,6 +3989,8 @@ def write_top_level_find_package_section(
     # Write find_package call for Qt5/Qt6 and make it available as package QT.
     cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED)\n")
 
+    debug and print(f"write_top_level_find_package_section: dependencies.required_libs = {dependencies.required_libs}")
+
     # Write find_package calls for required packages.
     write_find_package_section(
         cm_fh,
@@ -3933,6 +4002,8 @@ def write_top_level_find_package_section(
 
     # Remove optional packages that are already required.
     optional_libs = list(set(dependencies.optional_libs) - set(dependencies.required_libs))
+
+    debug and print(f"write_top_level_find_package_section: optional_libs = {optional_libs}")
 
     # Write find_package calls for optional packages.
     write_find_package_section(
@@ -4132,6 +4203,8 @@ def write_app_or_lib(
         cm_fh.write("\n")
 
     if out_library_dependencies is not None:
+        debug and print(f"write_app_or_lib: libdeps.required_libs = {libdeps.required_libs}")
+        debug and print(f"write_app_or_lib: libdeps.optional_libs = {libdeps.optional_libs}")
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
 
@@ -4455,7 +4528,7 @@ def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
     depgraph = networkx.DiGraph()
     depgraph_roots = set()
     for target_name in scope_installs:
-        print(f"installs.{target_name}.depends = {scope.get(f'{target_name}.depends')}") # depends on other targets
+        debug and print(f"installs.{target_name}.depends = {scope.get(f'{target_name}.depends')}") # depends on other targets
         target_depends = scope.get(f'{target_name}.depends')
         install_target_name = "install_" + target_name
         for dep in target_depends:
@@ -4600,7 +4673,7 @@ def cmake_string(s):
 
 
 # TODO remove? not used
-def bracket_string(fh: IO[str]):
+def cmake_bracket_string(fh: IO[str]):
     "format string as cmake bracket argument"
     # https://cmake.org/cmake/help/v3.23/manual/cmake-language.7.html#bracket-argument
     bracket_content = fh.getvalue()
@@ -4837,15 +4910,15 @@ def write_qml_module(
         qt_add_qml_module({target}
             URI {uri}
             VERSION {version}
-            """
+        """
     )
 
     # function(qt6_add_qml_module
     # https://code.qt.io/cgit/qt/qtdeclarative.git/tree/src/qml/Qt6QmlMacros.cmake#n13
-    content += "# qml types are generated by cmake, but not by qmake\n    "
-    content += "# multiple qml types produce the runtime error\n    "
-    content += '# "Cannot add multiple registrations for x"\n    '
-    content += "NO_GENERATE_QMLTYPES\n    "
+    content += "    # qml types are generated by cmake, but not by qmake\n"
+    content += "    # multiple qml types produce the runtime error\n"
+    content += '    # "Cannot add multiple registrations for x"\n'
+    content += "    NO_GENERATE_QMLTYPES\n"
 
     resource_files: Dict[str, str] = {}
     if resource is not None:
@@ -5331,6 +5404,8 @@ def generate_new_cmakelists(scope: Scope, *, debug: bool = False) -> None:
         print("Generating CMakeLists.gen.txt")
     with open(scope.generated_cmake_lists_path, "w") as cm_fh:
         assert scope.file
+        debug and print(f"generate_new_cmakelists: scope.file={scope.file}")
+        debug and print(f"generate_new_cmakelists: is_sub_project={is_marked_as_subdir(scope.file)}")
         cmakeify_scope(
             scope,
             cm_fh,
@@ -5482,11 +5557,11 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             "Please specify the minimum Qt version either with --min-qt-version or the environment variable QMAKE2CMAKE_MIN_QT_VERSION."
         )
 
+    if args.output_dir and args.output_file:
+        raise RuntimeError("Please set only one output option: --output-dir or --output-file.")
+
     if not isinstance(min_qt_version, version.Version):
         raise ValueError("Specified minimum Qt version is invalid.")
-
-    if args.output_file and args.output_dir:
-        raise RuntimeError("Please set only one output option: --output-file or --output-dir.")
 
     debug_parsing = args.debug_parser or args.debug
     if args.skip_condition_cache:
@@ -5494,18 +5569,23 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
 
     backup_current_dir = os.getcwd()
 
-    for input_file in args.input_files:
-        new_current_dir = ''
+    for file in args.files:
+        new_current_dir = os.path.dirname(file)
+        file_relative_path = os.path.basename(file)
+        # TODO avoid os.chdir -> fix os.path.isdir(sd) etc
+        if new_current_dir:
+            os.chdir(new_current_dir)
 
-        if not should_convert_project(input_file, args.ignore_skip_marker):
-            print(f'Skipping conversion of project: "{input_file}"')
+        project_file_absolute_path = os.path.abspath(file_relative_path)
+        if not should_convert_project(project_file_absolute_path, args.ignore_skip_marker):
+            print(f'Skipping conversion of project: "{project_file_absolute_path}"')
             continue
 
         if args.debug_dump_files or args.debug:
-            print(f"\nReading input file: {input_file}:")
-            dump_file(input_file)
+            print(f"\nReading input file: {file}:")
+            dump_file(file)
 
-        parseresult, project_file_content = parseProFile(input_file, debug=debug_parsing)
+        parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
 
         if args.debug_parse_result or args.debug:
             print("\n\n#### Parser result:")
@@ -5516,11 +5596,16 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             print(parseresult.asDict())
             print("\n#### End of parser result dictionary.\n")
 
+        input_dir = args.input_dir or os.path.dirname(file_relative_path)
+        debug and print(f"pro2cmake.py: args.input_dir = {args.input_dir}")
+        debug and print(f"pro2cmake.py: input_dir = {input_dir}")
+
         file_scope = Scope.FromDict(
             None,
-            input_file,
+            file_relative_path,
             parseresult.asDict().get("statements"),
             project_file_content=project_file_content,
+            input_dir=input_dir,
         )
 
         if args.debug_pro_structure or args.debug:
@@ -5547,13 +5632,15 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
         copy_generated_file = True
 
         output_file = file_scope.original_cmake_lists_path
+        debug and print(f"main: output_file = {output_file}")
         if args.output_file:
             output_file = args.output_file
-
+            debug and print(f"main: output_file = args.output_file = {output_file}")
         if args.output_dir:
             output_file = os.path.join(args.output_dir, file_scope.original_cmake_lists_path)
+            debug and print(f"main: output_file = args.output_dir + output_file = {output_file}")
 
-        print(f'Writing "{output_file}"')
+        print(f'Writing: {output_file}')
 
         if args.enable_special_case_preservation:
             debug_special_case = args.debug_special_case_preservation or args.debug
