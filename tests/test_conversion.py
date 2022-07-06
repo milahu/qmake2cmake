@@ -28,8 +28,9 @@
 #############################################################################
 
 from qmake2cmake.pro2cmake import Scope, SetOperation, merge_scopes, recursive_evaluate_scope
-from qmake2cmake.pro2cmake import main as convert_qmake_to_cmake
-from tempfile import TemporaryDirectory
+from qmake2cmake.pro2cmake import main as convert_qmake_to_cmake # qmake2cmake
+from qmake2cmake.run_pro2cmake import main as convert_qmake_to_cmake_all # qmake2cmake_all
+import tempfile
 
 import filecmp
 import functools
@@ -50,45 +51,106 @@ test_data_dir = test_script_dir.joinpath("data", "conversion")
 
 def compare_expected_output_directories(actual: str, expected: str):
     dc = filecmp.dircmp(actual, expected)
+    if dc.diff_files:
+        print("error in snapshot test")
+        print()
+        print("diff:")
+        print(f"- actual   {actual}")
+        print(f"+ expected {expected}")
+        try:
+            os.system(f"diff -r -u --color=always {actual} {expected}")
+        except Exception as e:
+            print(f"failed to call diff: {e}")
+        print()
+        if debug_mode:
+            e_rel = os.path.relpath(expected, os.getcwd())
+            print("to update the expected files, run:")
+            print(f"git rm -r {e_rel}")
+            print(f"cp -r {actual} {e_rel}")
+            print(f"git add {e_rel}")
+            print(f"git status")
+            print(f"git commit")
+        else:
+            print("set DEBUG_QMAKE2CMAKE_TEST_CONVERSION=1 to keep the actual files")
     assert(dc.diff_files == [])
 
 
-def convert(base_name: str,
-            *,
-            min_qt_version: str = "6.2.0",
-            after_conversion_hook: Optional[Callable[[str], None]] = None):
-    '''Converts {base_name}.pro to CMake in a temporary directory.
+def convert(
+        base_name: str,
+        *,
+        min_qt_version: str = "6.2.0",
+        recursive: bool = False,
+        after_conversion_hook: Optional[Callable[[str], None]] = None
+    ):
+    '''
+    Converts {base_name}.pro to CMake in a temporary directory.
 
     The optional after_conversion_hook is a function that takes the temporary directory as
-    parameter.  It is called after the conversion took place.
+    parameter.  It is called after the conversion.
     '''
     pro_file_name = str(base_name) + ".pro"
     pro_file_path = test_data_dir.joinpath(pro_file_name)
     assert(pro_file_path.exists())
-    with TemporaryDirectory(prefix="testqmake2cmake") as tmp_dir_str:
-        tmp_dir = pathlib.Path(tmp_dir_str)
-        output_file_path = tmp_dir.joinpath("CMakeLists.txt")
-        convert_qmake_to_cmake(["-o", str(output_file_path), str(pro_file_path),
-                                "--min-qt-version", min_qt_version])
+
+    if True: # keep indent
+        tmp_dir = tempfile.TemporaryDirectory(prefix="testqmake2cmake")
+        tmp_dir_path = pathlib.Path(tmp_dir.name)
+        output_file_path = tmp_dir_path.joinpath("CMakeLists.txt")
+
+        convert_fn = convert_qmake_to_cmake
+        if recursive:
+            convert_fn = convert_qmake_to_cmake_all
+
+        convert_args = []
+        convert_args += ["--min-qt-version", min_qt_version]
+        if recursive:
+            convert_args += ["--output-dir", tmp_dir_path]
+            convert_args += ["--main-file", pro_file_path.name]
+            convert_args += [pro_file_path.parent]
+        else:
+            convert_args += ["--output-file", output_file_path]
+            convert_args += [pro_file_path]
+
+        # argparse expects list of strings
+        convert_args = list(map(str, convert_args))
+
+        convert_fn(convert_args)
+
         if debug_mode:
             output_dir = tempfile.gettempdir() + "/qmake2cmake"
             if not os.path.isdir(output_dir):
                 os.mkdir(output_dir)
             shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
+
         f = open(output_file_path, "r")
         assert(f)
         content = f.read()
         assert(content)
         if after_conversion_hook is not None:
-            after_conversion_hook(tmp_dir)
+            after_conversion_hook(tmp_dir_path)
+
+        if debug_mode:
+            print(f"test_conversion.py: keeping temporary files in {tmp_dir.name}")
+        else:
+            tmp_dir.cleanup()
+
         return content
 
 
-def convert_and_compare_expected_output(pro_base_name: str, rel_expected_output_dir: str):
+def convert_and_compare_expected_output(
+        pro_base_name: str,
+        rel_expected_output_dir: str,
+        recursive: bool = False,
+    ):
     abs_expected_output_dir = test_data_dir.joinpath(rel_expected_output_dir)
-    convert(pro_base_name,
-            after_conversion_hook=functools.partial(compare_expected_output_directories,
-                                                    expected=abs_expected_output_dir))
+    convert(
+        pro_base_name,
+        after_conversion_hook=functools.partial(
+            compare_expected_output_directories,
+            expected=abs_expected_output_dir
+        ),
+        recursive=recursive
+    )
 
 
 def test_qt_modules():
@@ -122,7 +184,7 @@ def test_qt_version_check():
 
 def test_subdirs():
     '''Test conversion of a TEMPLATE=subdirs project.'''
-    convert_and_compare_expected_output("subdirs/subdirs", "subdirs/expected")
+    convert_and_compare_expected_output("subdirs/subdirs", "subdirs/expected", recursive=True)
 
 
 def test_common_project_types():
