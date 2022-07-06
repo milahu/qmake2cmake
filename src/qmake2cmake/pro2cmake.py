@@ -205,11 +205,18 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
     )
 
     parser.add_argument(
-        "files",
-        metavar="<.pro/.pri file>",
+        "--output-dir",
+        dest="output_dir",
+        action="store",
+        help="Path to directory for output files. Default is the current workdir.",
+    )
+
+    parser.add_argument(
+        "input_files",
+        metavar="<.pro|.pri file>",
         type=str,
         nargs="+",
-        help="The .pro/.pri file to process",
+        help="The .pro or .pri input files",
     )
     return parser.parse_args(command_line_args)
 
@@ -289,18 +296,9 @@ def is_manual_test_project(project_file_path: str = "") -> bool:
     return project_relative_path.startswith("tests/manual")
 
 
-@lru_cache(maxsize=None)
 def find_file_walking_parent_dirs(file_name: str, project_file_path: str = "") -> str:
     assert file_name
-    if not os.path.isabs(project_file_path):
-        print(
-            f"Warning: could not find {file_name} file, given path is not an "
-            f"absolute path: {project_file_path}"
-        )
-        return ""
-
     cwd = os.path.dirname(project_file_path)
-
     while os.path.isdir(cwd):
         maybe_file = posixpath.join(cwd, file_name)
         if os.path.isfile(maybe_file):
@@ -311,7 +309,6 @@ def find_file_walking_parent_dirs(file_name: str, project_file_path: str = "") -
             if last_cwd == cwd:
                 # reached the top level directory, stop looking
                 break
-
     return ""
 
 
@@ -1230,6 +1227,8 @@ class Scope(object):
     @property
     def original_cmake_lists_path(self) -> str:
         assert self.basedir
+        if self.basedir == ".":
+            return "CMakeLists.txt" # dont return ./CMakeLists.txt
         return os.path.join(self.basedir, "CMakeLists.txt")
 
     @property
@@ -5486,28 +5485,27 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
     if not isinstance(min_qt_version, version.Version):
         raise ValueError("Specified minimum Qt version is invalid.")
 
+    if args.output_file and args.output_dir:
+        raise RuntimeError("Please set only one output option: --output-file or --output-dir.")
+
     debug_parsing = args.debug_parser or args.debug
     if args.skip_condition_cache:
         set_condition_simplified_cache_enabled(False)
 
     backup_current_dir = os.getcwd()
 
-    for file in args.files:
-        new_current_dir = os.path.dirname(file)
-        file_relative_path = os.path.basename(file)
-        if new_current_dir:
-            os.chdir(new_current_dir)
+    for input_file in args.input_files:
+        new_current_dir = ''
 
-        project_file_absolute_path = os.path.abspath(file_relative_path)
-        if not should_convert_project(project_file_absolute_path, args.ignore_skip_marker):
-            print(f'Skipping conversion of project: "{project_file_absolute_path}"')
+        if not should_convert_project(input_file, args.ignore_skip_marker):
+            print(f'Skipping conversion of project: "{input_file}"')
             continue
 
         if args.debug_dump_files or args.debug:
-            print(f"\nReading input file: {file}:")
-            dump_file(file)
+            print(f"\nReading input file: {input_file}:")
+            dump_file(input_file)
 
-        parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
+        parseresult, project_file_content = parseProFile(input_file, debug=debug_parsing)
 
         if args.debug_parse_result or args.debug:
             print("\n\n#### Parser result:")
@@ -5520,7 +5518,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
 
         file_scope = Scope.FromDict(
             None,
-            file_relative_path,
+            input_file,
             parseresult.asDict().get("statements"),
             project_file_content=project_file_content,
         )
@@ -5551,6 +5549,11 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
         output_file = file_scope.original_cmake_lists_path
         if args.output_file:
             output_file = args.output_file
+
+        if args.output_dir:
+            output_file = os.path.join(args.output_dir, file_scope.original_cmake_lists_path)
+
+        print(f'Writing "{output_file}"')
 
         if args.enable_special_case_preservation:
             debug_special_case = args.debug_special_case_preservation or args.debug
