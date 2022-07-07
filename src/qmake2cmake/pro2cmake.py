@@ -90,7 +90,8 @@ cmake_version_string = "3.16"
 cmake_api_version = 3
 min_qt_version = version.parse("1.0.0")
 
-debug = False
+# TODO this.debug
+debug = bool(os.environ.get("QMAKE2CMAKE_DEBUG"))
 
 
 def _parse_commandline(command_line_args: Optional[List[str]] = None):

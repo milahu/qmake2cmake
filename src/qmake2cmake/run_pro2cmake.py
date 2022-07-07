@@ -53,7 +53,8 @@ from typing import (
     Type,
 )
 
-debug = False
+# TODO this.debug
+debug = bool(os.environ.get("QMAKE2CMAKE_DEBUG"))
 
 def _parse_commandline(command_line_args: Optional[List[str]] = None) -> argparse.Namespace:
     parser = ArgumentParser(
