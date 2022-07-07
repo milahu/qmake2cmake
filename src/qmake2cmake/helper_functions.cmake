@@ -1,17 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-project(subdirs VERSION 1.0 LANGUAGES CXX)
-
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-# Set up AUTOMOC and some sensible defaults for runtime execution
-# When using Qt 6.3, you can replace the code block below with
-# qt_standard_project_setup()
-set(CMAKE_AUTOMOC ON)
-include(GNUInstallDirs)
-
-
-# helper functions
-
 function(get_name_of_path path result)
     # get basename of filepath or dirname of dirpath
     cmake_path(SET path NORMALIZE "${path}")
@@ -111,30 +97,3 @@ function(add_subdirectory_ordered)
     list(APPEND all_previous_targets_local ${last_subdir_main_targets})
     set(all_previous_targets ${all_previous_targets_local} PARENT_SCOPE)
 endfunction()
-
-
-find_package(QT NAMES Qt5 Qt6 REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Network OpenGL)
-find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS Core5Compat)
-
-qt_add_executable(app WIN32 MACOSX_BUNDLE)
-target_sources(app PRIVATE
-    main.cpp
-)
-target_link_libraries(app PRIVATE
-    Qt::OpenGL
-)
-
-# install_app
-install(TARGETS app
-    BUNDLE DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-# Consider using qt_generate_deploy_app_script() for app deployment if
-# the project can use Qt 6.3. In that case rerun qmake2cmake with
-# --min-qt-version=6.3.
-
-add_subdirectory(lib1)
-add_subdirectory(lib2)
-add_subdirectory(lib3)

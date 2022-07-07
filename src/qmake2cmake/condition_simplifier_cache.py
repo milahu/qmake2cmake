@@ -34,6 +34,7 @@ import json
 import os
 import sys
 import time
+import tempfile
 
 from typing import Any, Callable, Dict
 
@@ -56,8 +57,8 @@ def get_current_file_path() -> str:
 
 def get_cache_location() -> str:
     this_file = get_current_file_path()
-    dir_path = os.path.dirname(this_file)
-    cache_path = os.path.join(dir_path, ".pro2cmake_cache", "cache.json")
+    dir_path = tempfile.gettempdir() # /tmp or C:\TEMP
+    cache_path = os.path.join(dir_path, "qmake2cmake_cache", "cache.json")
     return cache_path
 
 
