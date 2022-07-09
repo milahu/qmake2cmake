@@ -1053,12 +1053,12 @@ class Scope(object):
             print(f"Scope.__init__: os.getcwd() = {os.getcwd()}")
             print(f"Scope.__init__: input_dir = {input_dir}")
             print(f"Scope.__init__: self._main_scope._input_dir = {self._main_scope._input_dir}")
-            print(f"Scope.__init__: self._file_absolute_dir = {self._file_absolute_dir}")
             print(f"Scope.__init__: self._input_dir = {self._input_dir}")
             print(f"Scope.__init__: self._file = {self._file}")
             print(f"Scope.__init__: self._file_absolute_path = {self._file_absolute_path}")
+            print(f"Scope.__init__: self._file_absolute_dir = {self._file_absolute_dir}")
             print(f"Scope.__init__: self._file_relative_path = {self._file_relative_path}")
-            print(f"Scope.__init__: self._input_dir_abs = {self._input_dir_abs}")
+            print(f"Scope.__init__: self._file_relative_dir = {self._file_relative_dir}")
 
         self._condition = map_condition(condition)
         self._children = []  # type: List[Scope]
