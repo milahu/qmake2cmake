@@ -120,7 +120,7 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
         "--debug-parser",
         dest="debug_parser",
         action="store_true",
-        help="Print debug output from qmake parser.",
+        help="Print debug output from qmake parser. Note: This is really verbose.",
         default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSER", False),
     )
     parser.add_argument(
@@ -5438,7 +5438,8 @@ def do_include(scope: Scope, *, debug: bool = False) -> None:
         include_op = scope._get_operation_at_index("_INCLUDED", include_index)
         include_line_no = include_op._line_no
 
-        include_result, project_file_content = parseProFile(include_file, debug=debug)
+        include_result, project_file_content = parseProFile(include_file, debug=args.debug_parser)
+
         include_scope = Scope.FromDict(
             None,
             include_file,
@@ -5564,7 +5565,6 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
     if not isinstance(min_qt_version, version.Version):
         raise ValueError("Specified minimum Qt version is invalid.")
 
-    debug_parsing = args.debug_parser or args.debug
     if args.skip_condition_cache:
         set_condition_simplified_cache_enabled(False)
 
@@ -5586,7 +5586,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             print(f"\nReading input file: {file}:")
             dump_file(file)
 
-        parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
+        parseresult, project_file_content = parseProFile(file_relative_path, debug=args.debug_parser)
 
         if args.debug_parse_result or args.debug:
             print("\n\n#### Parser result:")
@@ -5614,7 +5614,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             file_scope.dump()
             print("\n#### End of .pro/.pri file structure.\n")
 
-        do_include(file_scope, debug=debug_parsing)
+        do_include(file_scope, debug=args.debug_parser)
 
         if args.debug_full_pro_structure or args.debug:
             print("\n\n#### Full .pro/.pri file structure:")
