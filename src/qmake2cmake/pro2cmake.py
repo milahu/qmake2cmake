@@ -5632,8 +5632,8 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
 
         copy_generated_file = True
 
-        output_file = file_scope.original_cmake_lists_path
-        debug and print(f"main: output_file = {output_file}")
+        output_file = None
+        debug and print(f"main: file_scope.original_cmake_lists_path = {file_scope.original_cmake_lists_path}")
         if args.output_file:
             output_file = args.output_file
             debug and print(f"main: output_file = args.output_file = {output_file}")
@@ -5641,7 +5641,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             output_file = os.path.join(args.output_dir, file_scope.original_cmake_lists_path)
             debug and print(f"main: output_file = args.output_dir + output_file = {output_file}")
         else:
-            output_file = os.path.join(pro2cmake.py: input_dir = , file_scope.original_cmake_lists_path)
+            output_file = os.path.join(input_dir, file_scope.original_cmake_lists_path)
             debug and print(f"main: output_file = input_dir + output_file = {output_file}")
 
         print(f'Writing: {output_file}')
