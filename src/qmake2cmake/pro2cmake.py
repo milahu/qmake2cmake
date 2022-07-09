@@ -5637,9 +5637,12 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
         if args.output_file:
             output_file = args.output_file
             debug and print(f"main: output_file = args.output_file = {output_file}")
-        if args.output_dir:
+        elif args.output_dir:
             output_file = os.path.join(args.output_dir, file_scope.original_cmake_lists_path)
             debug and print(f"main: output_file = args.output_dir + output_file = {output_file}")
+        else:
+            output_file = os.path.join(pro2cmake.py: input_dir = , file_scope.original_cmake_lists_path)
+            debug and print(f"main: output_file = input_dir + output_file = {output_file}")
 
         print(f'Writing: {output_file}')
 
