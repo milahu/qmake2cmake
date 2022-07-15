@@ -333,9 +333,10 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace, p
     # TODO(milahu) what is initargs=(10,)
     # TODO(milahu) why threads? why not ProcessPoolExecutor? is this IO bound...?
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        print("")
-        print(f"Converting {len(all_files)} subprojects in parallel")
-        print("")
+        if len(all_files) > 1:
+            print("")
+            print(f"Converting {len(all_files)} subprojects in parallel")
+            print("")
 
         for return_code, filename, stdout in pool.map(_process_a_file, data_list):
             if return_code:
