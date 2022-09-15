@@ -53,9 +53,9 @@ def convert(base_name: str,
             if not os.path.isdir(output_dir):
                 os.mkdir(output_dir)
             shutil.copyfile(output_file_path, output_dir + "/CMakeLists.txt")
-        f = open(output_file_path, "r")
-        assert(f)
-        content = f.read()
+        with open(output_file_path, "r") as f:
+            assert(f)
+            content = f.read()
         assert(content)
         if after_conversion_hook is not None:
             after_conversion_hook(tmp_dir)
