@@ -38,9 +38,25 @@ import argparse
 from qmake2cmake.qmake_parser import parseProFileContents
 from argparse import ArgumentParser
 from qmake2cmake.pro2cmake import do_include, Scope
+from typing import (
+    List,
+    Optional,
+    Dict,
+    Set,
+    IO,
+    Union,
+    Any,
+    Callable,
+    FrozenSet,
+    Tuple,
+    Match,
+    Type,
+)
 
+# TODO this.debug
+debug = bool(os.environ.get("QMAKE2CMAKE_DEBUG"))
 
-def parse_command_line() -> argparse.Namespace:
+def _parse_commandline(command_line_args: Optional[List[str]] = None) -> argparse.Namespace:
     parser = ArgumentParser(
         description="Run qmake2cmake on all .pro files recursively in given path. "
         "You can pass additional arguments to the qmake2cmake calls by appending "
@@ -84,6 +100,13 @@ def parse_command_line() -> argparse.Namespace:
         help="Specify the name of the main .pro file in <path>.",
     )
     parser.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        action="store",
+        help="Path to directory for output files. Default is the current workdir.",
+        # TODO default: cwd or dirname(main_file)?
+    )
+    parser.add_argument(
         "--count", dest="count", help="How many projects should be converted.", type=int
     )
     parser.add_argument(
@@ -93,10 +116,22 @@ def parse_command_line() -> argparse.Namespace:
         type=int,
     )
     parser.add_argument(
-        "path", metavar="<path>", type=str, help="The path where to look for .pro files."
+        "--max-jobs",
+        dest="max_jobs",
+        help="Limit the number of parallel workers. Default: Use all CPU cores.",
+        type=int,
+    )
+    parser.add_argument(
+        "input_dir",
+        metavar="<input_dir>",
+        type=str,
+        help="Path to directory of input .pro files.",
+        default=".",
+        # TODO optional. default is cwd
+        # TODO clarify names. scope.basedir vs scope.currentdir vs args.input_dir vs args.main_project_dir
     )
 
-    args, unknown = parser.parse_known_args()
+    args, unknown = parser.parse_known_args(command_line_args)
 
     # Error out when the unknown arguments do not start with a "--",
     # which implies passing through arguments to qmake2cmake.
@@ -108,7 +143,7 @@ def parse_command_line() -> argparse.Namespace:
     return args
 
 
-def find_all_pro_files(base_path: str, args: argparse.Namespace):
+def find_all_pro_files(input_dir: str, args: argparse.Namespace, pretty_path):
     def sorter(pro_file: str) -> str:
         """Sorter that tries to prioritize main pro files in a directory."""
         pro_file_without_suffix = pro_file.rsplit("/", 1)[-1][:-4]
@@ -124,8 +159,12 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
     all_files = []
     previous_dir_name: typing.Optional[str] = None
 
-    print("Finding .pro files.")
-    glob_result = glob.glob(os.path.join(base_path, "**/*.pro"), recursive=True)
+
+    print(f"Searching .pro files in {pretty_path(input_dir)}")
+    # TODO(milahu) what about .pri files?
+    glob_result = glob.glob(os.path.join(input_dir, "**/*.pro"), recursive=True)
+    # note: we need absolute paths to find index files
+    # example: /tmp/hello/hello.pro
 
     def cmake_lists_exists_filter(path):
         path_dir_name = os.path.dirname(path)
@@ -175,7 +214,8 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
             if len(dir_files) <= 1:
                 result += dir_files
                 continue
-            print(f"Multiple .pro files found in {one_dir}")
+            print()
+            print(f"Found multiple .pro files")
             subdirs_projects = set(filter(is_subdirs_project, dir_files))
             skipped_projects = []
             if len(subdirs_projects) == 0 or len(subdirs_projects) > 1:
@@ -186,14 +226,14 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
                     print(f"  No SUBDIRS project found.")
                 else:
                     print(f"  Multiple SUBDIRS projects found")
-                print(f"  Selecting the first .pro file {p}")
+                print(f"Selecting the first .pro file {pretty_path(p)}")
             if len(subdirs_projects) == 1:
                 p = subdirs_projects.pop()
-                print(f"  SUBDIRS project selected for conversion: {p}")
+                print(f"Selecting type=SUBDIRS project: {pretty_path(p)}")
                 result.append(p)
                 skipped_projects = list(set(dir_files) - {p})
             for p in skipped_projects:
-                print(f"  Skipping: {p}")
+                print(f"Skipping: {pretty_path(p)}")
         return result
 
     if not args.skip_smart_directory_filtering:
@@ -209,23 +249,32 @@ def find_all_pro_files(base_path: str, args: argparse.Namespace):
     return all_files
 
 
-def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -> typing.List[str]:
+def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace, pretty_path: Callable[[str], str]) -> typing.List[str]:
     failed_files = []
     files_count = len(all_files)
-    workers = os.cpu_count() or 1
+
+    max_workers = args.max_jobs or os.cpu_count() or 1
+    debug and print(f"run_pro2cmake.py run: max_workers = {max_workers}")
+
+    user_workdir = os.getcwd()
 
     def _process_a_file(
-        data: typing.Tuple[str, int, int], direct_output: bool = False
+        data: typing.Tuple[str, int, int, argparse.Namespace, Callable[[str], str]], # item of data_list
+        direct_output: bool = False
     ) -> typing.Tuple[int, str, str]:
-        filename, index, total = data
+        filename, index, total, args, pretty_path = data
         pro2cmake_args = []
         pro2cmake_args.append(sys.executable)
         pro2cmake_args.append(pro2cmake)
         if args.min_qt_version:
             pro2cmake_args += ["--min-qt-version", args.min_qt_version]
+        pro2cmake_args += ["--input-dir", args.input_dir]
+        if args.output_dir:
+            pro2cmake_args += ["--output-dir", args.output_dir]
         if args.skip_subdirs_projects:
             pro2cmake_args.append("--skip-subdirs-project")
-        pro2cmake_args.append(os.path.basename(filename))
+
+        pro2cmake_args.append(filename)
 
         if args.pro2cmake_args:
             pro2cmake_args += args.pro2cmake_args
@@ -239,11 +288,10 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
 
         result = subprocess.run(
             pro2cmake_args,
-            cwd=os.path.dirname(filename),
             stdout=stdout_arg,
             stderr=stderr_arg,
         )
-        stdout = f"Converted[{index}/{total}]: {filename}\n"
+        stdout = f"Converting subproject {index} of {total}: {pretty_path(filename)}\n"
         if direct_output:
             output_result = ""
         else:
@@ -251,49 +299,90 @@ def run(all_files: typing.List[str], pro2cmake: str, args: argparse.Namespace) -
         return result.returncode, filename, output_result
 
     # Determine the main .pro file.
+    main_file = None
     if args.main_file:
-        main_file = os.path.join(args.path, args.main_file)
+        main_file = os.path.join(args.input_dir, args.main_file)
         if not os.path.isfile(main_file):
             raise FileNotFoundError(f"Specified main .pro file '{main_file}' cannot be found.")
+        all_files = list(filter(lambda f: f != main_file, all_files))
     else:
         main_file = all_files[0]
         all_files = all_files[1:]
 
+    # Delete old subdir markers.
+    for f in glob.glob(os.path.join(args.input_dir, "**/.qmake2cmake/subdir-of"), recursive=True):
+        os.remove(f)
+
     # Convert the main .pro file first to create the subdir markers.
-    print(f"Converting the main project file {main_file}")
-    exit_code = _process_a_file((main_file, 0, 1), direct_output=True)[0]
+    print("")
+    print(f"Converting main project: {pretty_path(main_file)}")
+    data = (main_file, 0, 1, args, pretty_path)
+    exit_code = _process_a_file(data, direct_output=True)[0]
     if exit_code != 0:
-        return [main_file]
+        failed_files = [main_file]
+        return failed_files
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers, initargs=(10,)) as pool:
-        print("Firing up thread pool executor.")
+    data_list = zip(
+        all_files,
+        range(1, len(all_files) + 1),
+        (len(all_files) for _ in all_files),
+        (args for _ in all_files),
+        (pretty_path for _ in all_files),
+    )
 
-        for return_code, filename, stdout in pool.map(
-            _process_a_file,
-            zip(all_files, range(1, files_count + 1), (files_count for _ in all_files)),
-        ):
+    # TODO(milahu) what is initargs=(10,)
+    # TODO(milahu) why threads? why not ProcessPoolExecutor? is this IO bound...?
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        if len(all_files) > 1:
+            print("")
+            print(f"Converting {len(all_files)} subprojects in parallel")
+            print("")
+
+        for return_code, filename, stdout in pool.map(_process_a_file, data_list):
             if return_code:
                 failed_files.append(filename)
             print(stdout)
 
     return failed_files
 
+def pretty_path_factory(user_input_dir):
+    if os.path.isabs(user_input_dir):
+        return lambda x: x
+    workdir = os.getcwd()
+    return lambda path: os.path.relpath(path, workdir)
 
-def main() -> None:
-    args = parse_command_line()
+def main(command_line_args: Optional[List[str]] = None) -> None:
+    # Be sure of proper Python version
+    assert sys.version_info >= (3, 7)
+
+    args = _parse_commandline(command_line_args)
+
+    pretty_path = pretty_path_factory(args.input_dir) # note: before abspath
+    args.input_dir = os.path.abspath(args.input_dir)
+
+    if args.main_file:
+        if os.path.isabs(args.main_file):
+            f = os.path.realpath(args.main_file)
+            d = os.path.realpath(args.input_dir)
+            if not f.startswith(d):
+                raise RuntimeError("main_file must be in input_dir")
+            a = args.main_file
+            args.main_file = os.path.relpath(args.main_file, args.input_dir)
+            debug and print(f"converted main_file path from absolute {a} to relative {args.main_file}") # debug
+        elif not os.path.isfile(os.path.join(args.input_dir, args.main_file)):
+            raise RuntimeError("main_file path must be relative to input_dir")
 
     script_path = os.path.dirname(os.path.abspath(__file__))
     pro2cmake = os.path.join(script_path, "pro2cmake.py")
-    base_path = args.path
 
-    all_files = find_all_pro_files(base_path, args)
+    all_files = find_all_pro_files(args.input_dir, args, pretty_path)
     if args.offset:
         all_files = all_files[args.offset :]
     if args.count:
         all_files = all_files[: args.count]
     files_count = len(all_files)
 
-    failed_files = run(all_files, pro2cmake, args)
+    failed_files = run(all_files, pro2cmake, args, pretty_path)
     if len(all_files) == 0:
         print("No files found.")
 

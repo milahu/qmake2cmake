@@ -42,6 +42,9 @@ import io
 import itertools
 import glob
 import fnmatch
+import pathlib
+import shlex
+import networkx
 
 from qmake2cmake.condition_simplifier import simplify_condition
 from qmake2cmake.condition_simplifier_cache import set_condition_simplified_cache_enabled
@@ -87,6 +90,9 @@ cmake_version_string = "3.16"
 cmake_api_version = 3
 min_qt_version = version.parse("1.0.0")
 
+# TODO this.debug
+debug = bool(os.environ.get("QMAKE2CMAKE_DEBUG"))
+
 
 def _parse_commandline(command_line_args: Optional[List[str]] = None):
     parser = ArgumentParser(
@@ -100,43 +106,57 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
         help="Specify the minimum Qt version for the converted project.",
     )
     parser.add_argument(
-        "--debug", dest="debug", action="store_true", help="Turn on all debug output"
+        "--debug", dest="debug", action="store_true", help="Turn on all debug output",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG", False),
+    )
+    parser.add_argument(
+        "--debug-dump-files",
+        dest="debug_dump_files",
+        action="store_true",
+        help="Dump all input files and output files.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_DUMP_FILES", False),
     )
     parser.add_argument(
         "--debug-parser",
         dest="debug_parser",
         action="store_true",
-        help="Print debug output from qmake parser.",
+        help="Print debug output from qmake parser. Note: This is really verbose.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSER", False),
     )
     parser.add_argument(
         "--debug-parse-result",
         dest="debug_parse_result",
         action="store_true",
         help="Dump the qmake parser result.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSE_RESULT", False),
     )
     parser.add_argument(
         "--debug-parse-dictionary",
         dest="debug_parse_dictionary",
         action="store_true",
         help="Dump the qmake parser result as dictionary.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PARSE_DICTIONARY", False),
     )
     parser.add_argument(
         "--debug-pro-structure",
         dest="debug_pro_structure",
         action="store_true",
         help="Dump the structure of the qmake .pro-file.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_PRO_STRUCTURE", False),
     )
     parser.add_argument(
         "--debug-full-pro-structure",
         dest="debug_full_pro_structure",
         action="store_true",
         help="Dump the full structure of the qmake .pro-file " "(with includes).",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_FULL_PRO_STRUCTURE", False),
     )
     parser.add_argument(
         "--debug-special-case-preservation",
         dest="debug_special_case_preservation",
         action="store_true",
         help="Show all git commands and file copies.",
+        default=os.environ.get("QMAKE2CMAKE_DEBUG_SPECIAL_CASE_PRESERVATION", False),
     )
 
     parser.add_argument(
@@ -176,6 +196,20 @@ def _parse_commandline(command_line_args: Optional[List[str]] = None):
         dest="ignore_skip_marker",
         action="store_true",
         help="If set, pro file will be converted even if skip marker is found in CMakeLists.txt.",
+    )
+
+    parser.add_argument(
+        "--input-dir",
+        dest="input_dir",
+        type=str,
+        help="Path of the main input directory. Default is the parent directory of each input file.",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        type=str,
+        help="Path of the main output directory. Default is the parent directory of each input file.",
     )
 
     parser.add_argument(
@@ -960,6 +994,9 @@ class OperationLocation(object):
 class Scope(object):
 
     SCOPE_ID: int = 1
+    _main_scope: Scope = None
+    _user_variables: Optional[dict] = None # only in main scope
+    _input_dir: str or None = None # main input directory
 
     def __init__(
         self,
@@ -968,6 +1005,7 @@ class Scope(object):
         qmake_file: str,
         condition: str = "",
         base_dir: str = "",
+        input_dir: str or None = None,
         operations: Union[Dict[str, List[Operation]], None] = None,
         parent_include_line_no: int = -1,
     ) -> None:
@@ -981,7 +1019,13 @@ class Scope(object):
         self._operations: Dict[str, List[Operation]] = copy.deepcopy(operations)
         if parent_scope:
             parent_scope._add_child(self)
+            self._parent = parent_scope
+            self._main_scope = self._parent
+            while self._main_scope._parent: # find the main scope
+                self._main_scope = self._main_scope._parent
         else:
+            self._main_scope = self
+            self._user_variables = dict()
             self._parent = None  # type: Optional[Scope]
             # Only add the  "QT = core gui" Set operation once, on the
             # very top-level .pro scope, aka it's basedir is empty.
@@ -996,8 +1040,26 @@ class Scope(object):
 
         self._scope_id = Scope.SCOPE_ID
         Scope.SCOPE_ID += 1
+
         self._file = qmake_file
         self._file_absolute_path = os.path.abspath(qmake_file)
+        self._file_absolute_dir = os.path.dirname(self._file_absolute_path)
+        # note: basedir != input_dir
+        self._input_dir = input_dir or self._main_scope._input_dir or self._file_absolute_dir
+        self._file_relative_path = os.path.relpath(self._file_absolute_path, self._input_dir)
+        self._file_relative_dir = os.path.dirname(self._file_relative_path) or "."
+
+        if debug:
+            print(f"Scope.__init__: os.getcwd() = {os.getcwd()}")
+            print(f"Scope.__init__: input_dir = {input_dir}")
+            print(f"Scope.__init__: self._main_scope._input_dir = {self._main_scope._input_dir}")
+            print(f"Scope.__init__: self._input_dir = {self._input_dir}")
+            print(f"Scope.__init__: self._file = {self._file}")
+            print(f"Scope.__init__: self._file_absolute_path = {self._file_absolute_path}")
+            print(f"Scope.__init__: self._file_absolute_dir = {self._file_absolute_dir}")
+            print(f"Scope.__init__: self._file_relative_path = {self._file_relative_path}")
+            print(f"Scope.__init__: self._file_relative_dir = {self._file_relative_dir}")
+
         self._condition = map_condition(condition)
         self._children = []  # type: List[Scope]
         self._included_children = []  # type: List[Scope]
@@ -1094,6 +1156,7 @@ class Scope(object):
         statements,
         cond: str = "",
         base_dir: str = "",
+        input_dir: str or None = None,
         project_file_content: str = "",
         parent_include_line_no: int = -1,
     ) -> Scope:
@@ -1102,6 +1165,7 @@ class Scope(object):
             qmake_file=file,
             condition=cond,
             base_dir=base_dir,
+            input_dir=input_dir,
             parent_include_line_no=parent_include_line_no,
         )
         for statement in statements:
@@ -1205,7 +1269,18 @@ class Scope(object):
     @property
     def original_cmake_lists_path(self) -> str:
         assert self.basedir
-        return os.path.join(self.basedir, "CMakeLists.txt")
+        if self._file_relative_dir == ".":
+            return "CMakeLists.txt"
+        #return os.path.join(self.basedir, "CMakeLists.txt")
+        # FIXME?
+        if False:
+            print(f"self._input_dir = {self._input_dir}")
+            print(f"self._file_absolute_path = {self._file_absolute_path}")
+            print(f"self._file_relative_path = {self._file_relative_path}")
+            print(f"self._file_relative_dir = {self._file_relative_dir}") # FIXME?
+        #return os.path.join(self.basedir, "CMakeLists.txt")
+        #return os.path.join(self.file_absolute_path, "CMakeLists.txt")
+        return os.path.join(self._file_relative_dir, "CMakeLists.txt") # FIXME wrong
 
     @property
     def condition(self) -> str:
@@ -1409,29 +1484,21 @@ class Scope(object):
             r = self._expand_value(f)
             expanded_files += r
 
-        mapped_files = list(
-            map(lambda f: map_to_file(f, self, is_include=is_include), expanded_files)
-        )
+        mapped_files = map(lambda f: map_to_file(f, self, is_include=is_include), expanded_files)
 
         if use_vpath:
-            result = list(
-                map(
-                    lambda f: handle_vpath(f, self.basedir, self.get("VPATH", inherit=True)),
-                    mapped_files,
-                )
-            )
+            f = lambda p: handle_vpath(p, self.basedir, self.get("VPATH", inherit=True))
+            result = map(f, mapped_files)
         else:
             result = mapped_files
 
         # strip ${CMAKE_CURRENT_SOURCE_DIR}:
-        result = list(
-            map(lambda f: f[28:] if f.startswith("${CMAKE_CURRENT_SOURCE_DIR}/") else f, result)
-        )
+        result = map(lambda f: f[28:] if f.startswith("${CMAKE_CURRENT_SOURCE_DIR}/") else f, result)
 
         # strip leading ./:
-        result = list(map(lambda f: trim_leading_dot(f), result))
+        result = map(lambda f: trim_leading_dot(f), result)
 
-        return result
+        return list(result)
 
     def get_files(
         self, key: str, *, use_vpath: bool = False, is_include: bool = False
@@ -1841,13 +1908,18 @@ def handle_subdir(
     # Parse the sub-project, and retrieve the information needed for the top-level find_package
     # calls.  This does not actually convert the file.
     def extend_library_dependencies(subdir_path: str, current_pro_path: str):
+        debug and print(f"extend_library_dependencies: is_sub_project={is_sub_project}")
+        debug and print(f"extend_library_dependencies: out_library_dependencies={out_library_dependencies}")
+        # is_sub_project=True
         if is_sub_project or out_library_dependencies is None:
             return
+        debug and print(f"extend_library_dependencies: write_subdir_marker({subdir_path}, {current_pro_path})")
         write_subdir_marker(subdir_path, current_pro_path)
+        debug and print(f"extend_library_dependencies: subdir_path={subdir_path}. isdir? {os.path.isdir(subdir_path)}")
         if os.path.isdir(subdir_path):
             subdir_path = re.sub("/+$", "", subdir_path)
             subdir_path += "/" + os.path.basename(subdir_path) + ".pro"
-        print(f'Analyzing "{subdir_path}"...', flush=True)
+        print(f'Analyzing: {subdir_path}', flush=True)
         file_contents = ""
         with open(subdir_path, "r") as file_fd:
             file_contents = file_fd.read()
@@ -1858,8 +1930,10 @@ def handle_subdir(
         scopes = flatten_scopes(scope)
         scopes = merge_scopes(scopes)
         libdeps = extract_library_dependencies(scope, scopes)
+        debug and print(f"extend_library_dependencies: libdeps.optional_libs = {libdeps.optional_libs}")
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
+        debug and print(f"extend_library_dependencies: scope.TEMPLATE = {scope.TEMPLATE}")
         if scope.TEMPLATE == "subdirs":
             all_subdirs: List[str] = []
             seen: Set[str] = set()
@@ -1870,8 +1944,10 @@ def handle_subdir(
                     if d not in seen:
                         seen.add(d)
                         all_subdirs.append(d)
+            debug and print(f"extend_library_dependencies: all_subdirs = {all_subdirs}")
             for sd in all_subdirs:
                 sd = apply_subdirs_modifiers(scope, sd)
+                # recursion
                 extend_library_dependencies(
                     os.path.dirname(scope.file) + "/" + sd, scope.file_absolute_path
                 )
@@ -1885,15 +1961,24 @@ def handle_subdir(
         indent: int = 0,
         current_conditions: FrozenSet[str] = frozenset(),
     ):
+        debug and print(f"handle_subdir_helper")
         for sd in scope.get_files("SUBDIRS"):
+            debug and print(f"handle_subdir_helper: sd = {sd}. isdir? {os.path.isdir(sd)}")
+            debug and print(f"handle_subdir_helper: os.getcwd() = {os.getcwd()}")
+            debug and print(f"handle_subdir_helper: scope._file = {scope._file}")
             sd = apply_subdirs_modifiers(scope, sd)
 
             # Collect info about conditions and SUBDIR assignments in the
             # current scope.
+            # note: sd is relative to os.getcwd()
+            # FIXME use absolute path
             if os.path.isdir(sd) or sd.startswith("-"):
+                debug and print(f"handle_subdir_helper: collect_subdir_info({sd})")
                 collect_subdir_info(sd, current_conditions=current_conditions)
                 if sd.startswith("-"):
                     sd = sd[1:]
+                # FIXME not reached?
+                debug and print(f"handle_subdir_helper: extend_library_dependencies({sd})") # ok
                 extend_library_dependencies(sd, scope.file_absolute_path)
             # For the file case, directly write into the file handle.
             elif os.path.isfile(sd):
@@ -1999,6 +2084,15 @@ def handle_subdir(
         # Print any requires() blocks.
         sub_io_string.write(expand_project_requirements(scope, skip_message=True))
 
+        add_subdirectory_fn = "add_subdirectory"
+        if "ordered" in scope.get("CONFIG"):
+            # build subdirectories in order
+            # qmake:
+            # TEMPLATE = subdirs
+            # CONFIG += ordered
+            # SUBDIRS = a b c
+            add_subdirectory_fn = "add_subdirectory_ordered"
+
         # Print the groups.
         ind = spaces(indent)
         for condition_key in grouped_sub_dirs:
@@ -2008,8 +2102,10 @@ def handle_subdir(
                 cond_ind += "    "
 
             sub_dir_list_by_key = grouped_sub_dirs.get(condition_key, [])
+
             for subdir_name in sub_dir_list_by_key:
-                sub_io_string.write(f"{cond_ind}add_subdirectory({subdir_name})\n")
+                sub_io_string.write(f"{cond_ind}{add_subdirectory_fn}({subdir_name})\n")
+
             if condition_key:
                 sub_io_string.write(f"{ind}endif()\n")
 
@@ -2063,6 +2159,8 @@ def handle_subdir(
 
     # Then write the subdirectories.
     group_and_print_sub_dirs(scope, indent=indent)
+
+    write_postinstall_commands(cm_fh, scope)
 
 
 def sort_sources(sources: List[str]) -> List[str]:
@@ -2198,9 +2296,13 @@ def write_list(
         cm_fh.write(f"{ind}{header}")
         extra_indent += "    "
     if cmake_parameter:
+        cmake_parameter = cmake_parameter.rstrip() # avoid \n\n
         cm_fh.write(f"{ind}{extra_indent}{cmake_parameter}\n")
         extra_indent += "    "
     for s in sort_sources(entries):
+        s = s.strip()
+        if s == "":
+            continue # avoid \n\n
         cm_fh.write(f"{ind}{extra_indent}{prefix}{s}\n")
     if footer:
         cm_fh.write(f"{ind}{footer}\n")
@@ -2221,11 +2323,13 @@ def write_source_file_list(
     for key in keys:
         sources += scope.get_files(key, use_vpath=True)
 
+    debug and print(f"write_source_file_list: sources = {sources}")
+
     # Remove duplicates, like in the case when NO_PCH_SOURCES ends up
     # adding the file to SOURCES, but SOURCES might have already
     # contained it before. Preserves order in Python 3.7+ because
     # dict keys are ordered.
-    sources = list(dict.fromkeys(sources))
+    sources = list(set(sources))
 
     write_list(cm_fh, sources, cmake_parameter, indent, header=header, footer=footer)
 
@@ -2323,6 +2427,10 @@ def write_compile_options(
     cm_fh: IO[str], scope: Scope, cmake_parameter: str, *, indent: int = 0, footer: str = ""
 ):
     compile_options = [d for d in scope.expand("QMAKE_CXXFLAGS") if not d.startswith("-D")]
+    # TODO test
+    # *-g++* {
+    #     QMAKE_CXXFLAGS += -O1
+    # }
 
     write_list(cm_fh, compile_options, cmake_parameter, indent, footer=footer)
 
@@ -2772,6 +2880,7 @@ def write_set_source_files_properties(
 def write_target_sources(
     cm_fh: IO[str], target: str, sources: List[str], visibility: str = "PRIVATE", indent: int = 0
 ):
+    debug and print(f"write_target_sources: sources = {sources}")
     command_name = "target_sources"
     header = f"{command_name}({target} {visibility}\n"
     write_list(cm_fh, sources, "", indent, footer=")", header=header)
@@ -3414,9 +3523,14 @@ def write_main_part(
             destdir = replace_path_constants(destdir, scope)
             extra_lines.append(f'OUTPUT_DIRECTORY "{destdir}"')
 
+    # add main target
     cm_fh.write(f"{spaces(indent)}{cmake_function}({target_ref}\n")
     for extra_line in extra_lines:
         cm_fh.write(f"{spaces(indent)}    {extra_line}\n")
+
+    write_link_options(io_string, binary_name, scope, indent=indent)
+
+    write_user_variables(io_string, binary_name, scope, indent=indent)
 
     write_sources_section(cm_fh, scopes[0], indent=indent, **kwargs)
 
@@ -3835,9 +3949,18 @@ def write_find_package_section(
         if p.components is not None:
             qt_components += p.components
     if qt_components:
-        if "Core" in qt_components:
-            qt_components.remove("Core")
         qt_components = sorted(qt_components)
+        if next((c for c in qt_components if c.startswith("WebEngine")), None):
+            # all webengine components require the WebEngineCore component
+            if "WebEngineCore" in qt_components:
+                qt_components.remove("WebEngineCore") # avoid duplicate
+            if is_required:
+                qt_components = ["WebEngineCore"] + qt_components
+        # all components require the Core component
+        if "Core" in qt_components:
+            qt_components.remove("Core") # avoid duplicate
+        if is_required:
+            qt_components = ["Core"] + qt_components
         qt_package = LibraryMapping("unknown", qt_package_name, "unknown", components=qt_components)
         if is_required:
             qt_package.extra = ["REQUIRED"]
@@ -3865,7 +3988,9 @@ def write_top_level_find_package_section(
     indent: int = 0,
 ):
     # Write find_package call for Qt5/Qt6 and make it available as package QT.
-    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)\n")
+    cm_fh.write("find_package(QT NAMES Qt5 Qt6 REQUIRED)\n")
+
+    debug and print(f"write_top_level_find_package_section: dependencies.required_libs = {dependencies.required_libs}")
 
     # Write find_package calls for required packages.
     write_find_package_section(
@@ -3878,6 +4003,8 @@ def write_top_level_find_package_section(
 
     # Remove optional packages that are already required.
     optional_libs = list(set(dependencies.optional_libs) - set(dependencies.required_libs))
+
+    debug and print(f"write_top_level_find_package_section: optional_libs = {optional_libs}")
 
     # Write find_package calls for optional packages.
     write_find_package_section(
@@ -4007,6 +4134,22 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
+""")
+
+    # cmake helper functions:
+    # install_target_files
+    # install_target_command
+    # add_subdirectory_ordered
+    # TODO setup.py: install helper_functions.cmake
+    helper_functions_path = str(pathlib.PurePath(__file__).parent / "helper_functions.cmake")
+    with open(helper_functions_path, "r") as f:
+        cmake_helper_functions = f.read()
+    cm_fh.write(
+        f"""
+
+# helper functions
+
+{cmake_helper_functions}
 """
         )
 
@@ -4061,6 +4204,8 @@ def write_app_or_lib(
         cm_fh.write("\n")
 
     if out_library_dependencies is not None:
+        debug and print(f"write_app_or_lib: libdeps.required_libs = {libdeps.required_libs}")
+        debug and print(f"write_app_or_lib: libdeps.optional_libs = {libdeps.optional_libs}")
         out_library_dependencies.required_libs += libdeps.required_libs
         out_library_dependencies.optional_libs += libdeps.optional_libs
 
@@ -4082,7 +4227,6 @@ def write_app_or_lib(
             extra_add_qml_module_args=extra_args,
         )
         add_target += io_string.getvalue()
-        add_target += f"target_sources({binary_name} PRIVATE"
     elif scope.TEMPLATE == "app":
         add_target = f"qt_add_executable({binary_name}"
 
@@ -4092,6 +4236,7 @@ def write_app_or_lib(
             add_target += " " + "WIN32"
         if property_mac_bundle:
             add_target += " " + "MACOSX_BUNDLE"
+        add_target += ")\n"
     else:
         if is_plugin:
             add_target = f"qt_add_plugin({binary_name}"
@@ -4099,7 +4244,12 @@ def write_app_or_lib(
             add_target = f"qt_add_library({binary_name}"
         if "static" in config:
             add_target += " STATIC"
+        add_target += ")\n"
 
+    # note: qt_add_plugin does not support the "sources..." argument
+    # https://bugreports.qt.io/browse/QTBUG-104189
+    # -> generic solution: add sources with target_sources
+    add_target += f"target_sources({binary_name} PRIVATE\n"
     write_all_source_file_lists(cm_fh, scope, add_target, indent=0)
     cm_fh.write(")\n")
 
@@ -4200,6 +4350,10 @@ endif()
             io_string, scope, f"target_compile_options({binary_name}", indent=indent, footer=")\n"
         )
 
+        write_link_options(io_string, binary_name, scope, indent=indent)
+
+        write_user_variables(io_string, binary_name, scope, indent=indent)
+
         (resources, standalone_qtquick_compiler_skipped_files) = extract_resources(
             binary_name, scope
         )
@@ -4230,10 +4384,85 @@ endif()
 
         handling_first_scope = False
 
+    write_postbuild_commands(cm_fh, main_scope)
+
     write_install_commands(cm_fh, main_scope)
+
+    write_postinstall_commands(cm_fh, main_scope)
+
     write_deploy_app_commands(cm_fh, main_scope)
 
     return binary_name
+
+
+def write_postbuild_commands(cm_fh, scope):
+    post_link = scope.get("QMAKE_POST_LINK")
+    if post_link:
+        # expand user variables
+        post_link = list(map(lambda s: scope._main_scope._user_variables.get(s, s), post_link))
+        command_map = {
+            "$(COPY_FILE)": (
+                lambda a: len(a) == 3, # extra condition for this command
+                lambda a: f'${{CMAKE_COMMAND}} -E copy "{a[1]}" "{a[2]}"', # TODO shlex, escape args
+                lambda a: f'cmake -E copy "{a[1]}" "{a[2]}"', # pretty version for logging
+            ),
+        }
+        if post_link[0] in command_map and command_map[post_link[0]][0](post_link):
+            cmd_str = command_map[post_link[0]][1](post_link)
+            cmd_str_short = command_map[post_link[0]][2](post_link)
+            cm_fh.write(f'\n')
+
+            cm_fh.write(f'add_custom_command(TARGET "{scope.TARGET}" POST_BUILD\n')
+            cm_fh.write(f'{spaces(1)}COMMAND ${{CMAKE_COMMAND}} -E echo "-- Running:" {cmd_str_short} \\(workdir: ${{CMAKE_CURRENT_BINARY_DIR}}\\)\n')
+            cm_fh.write(f"{spaces(1)}COMMAND {cmd_str}\n")
+            cm_fh.write(f'{spaces(1)}VERBATIM\n')
+            cm_fh.write(f")\n")
+            # example cmake output:
+            # [ 12%] Linking CXX shared module libQtGui.so
+            # -- Running: cmake -E copy libQtGui.so QtGui.abi3.so (workdir: /build/tmp5rh0xism/QtGui)
+            # [ 12%] Built target QtGui
+        else:
+            cm_fh.write(f"\n# TODO implement:\n")
+            cm_fh.write(f"# QMAKE_POST_LINK = {post_link}\n")
+
+
+def write_user_variables(io_string, binary_name, scope, indent=0):
+    # user variables = all keys that are not handled by qmake
+    # https://doc.qt.io/qt-6/qmake-variable-reference.html
+    qmake_keys = {
+        'QT', 'TEMPLATE', 'TARGET', 'SOURCES', 'HEADERS', 'RESOURCES', 'INSTALLS',
+        'QT_SOURCE_TREE', 'QT_BUILD_TREE', 'QTRO_SOURCE_TREE', 'QMAKE_POST_LINK',
+        'QMAKE_LFLAGS', 'CONFIG', 'DEFINES', 'INCLUDEPATH', 'QML_IMPORT_NAME',
+        'QML_IMPORT_MAJOR_VERSION'
+        # TODO more
+    }
+
+    key_regex = re.compile(r"[A-Z_]+") # key must be uppercase
+    key_list = list(filter(lambda k: not k in qmake_keys and key_regex.match(k), scope.keys))
+    if not key_list:
+        return
+    for key in key_list:
+        if key in qmake_keys:
+            continue
+        val = scope.get_string(key)
+        # https://cmake.org/cmake/help/v3.0/manual/cmake-generator-expressions.7.html
+        val = val.replace("$(DESTDIR)", f"$<TARGET_FILE_DIR:{scope._main_scope.TARGET}>")
+        val = val.replace("$(TARGET)", f"$<TARGET_FILE_NAME:{scope._main_scope.TARGET}>")
+        val = val.replace("$(DESTDIR_TARGET)", f"$<TARGET_FILE:{scope._main_scope.TARGET}>")
+        io_string.write(f"{spaces(indent)}set({key} {val})\n")
+        scope._main_scope._user_variables.update({f"$${key}": f"${{{key}}}"})
+
+
+def write_link_options(io_string, binary_name, scope, indent=0):
+        link_options = scope.get("QMAKE_LFLAGS")
+        if not link_options:
+            return
+        # https://cmake.org/cmake/help/latest/command/target_link_options.html
+        io_string.write(f"{spaces(indent)}target_link_options({scope._main_scope.TARGET}\n")
+        io_string.write(f"{spaces(indent + 1)}PRIVATE\n")
+        for link_option in link_options:
+            io_string.write(f"{spaces(indent + 1)}{link_option}\n")
+        io_string.write(f"{spaces(indent)})\n")
 
 
 def write_install_commands(cm_fh: IO[str], scope: Scope):
@@ -4261,13 +4490,206 @@ def write_install_commands(cm_fh: IO[str], scope: Scope):
 
     install_options_str = "\n".join(install_options)
 
+    main_install_target = main_install_target_of_template[scope.TEMPLATE]
+
     cm_fh.write(
         f"""
+# {main_install_target}
 install(TARGETS {binary_name}
 {install_options_str}
 )
 """
     )
+
+
+main_install_target_of_template = {
+    "subdirs": "install_subtargets",
+    "lib": "install_lib",
+    "app": "install_app",
+}
+
+
+def write_postinstall_commands(cm_fh: IO[str], scope: Scope):
+
+    scope_installs = scope.get('INSTALLS')
+    if not scope_installs:
+        return
+
+    main_install_target = main_install_target_of_template[scope.TEMPLATE]
+
+    # cmake executes postinstall commands in order of appearance
+    # so we must resolve the execution order manually
+    # from the dependencies specified in the .pro file
+
+    # TODO let cmake resolve dependencies. not implemented in cmake?
+    # https://discourse.cmake.org/t/install-file-with-custom-target/2984
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/8438
+
+    # build dependency graph
+    depgraph = networkx.DiGraph()
+    depgraph_roots = set()
+    for target_name in scope_installs:
+        debug and print(f"installs.{target_name}.depends = {scope.get(f'{target_name}.depends')}") # depends on other targets
+        target_depends = scope.get(f'{target_name}.depends')
+        install_target_name = "install_" + target_name
+        for dep in target_depends:
+            depgraph.add_edge(dep, install_target_name)
+        # quickfix for install-targets without dependencies
+        # make all install targets depend on the main install target
+        depgraph.add_edge(main_install_target, install_target_name)
+
+    # find roots of graph
+    depgraph_roots = []
+    for component in networkx.weakly_connected_components(depgraph):
+        subgraph = depgraph.subgraph(component)
+        depgraph_roots.extend([n for n,d in subgraph.in_degree() if d==0])
+
+    targets_sorted = None
+
+    # check for cycles
+    # toposort throws exception, but does not print cycles
+    depgraph_cycles = list(networkx.simple_cycles(depgraph))
+    if depgraph_cycles:
+        raise Exception(f"found cycles in depgraph: {depgraph_cycles}")
+
+    targets_sorted = list(networkx.topological_sort(depgraph))
+
+    # the main target was added in write_install_commands
+    if scope.TEMPLATE == "subdirs":
+        assert targets_sorted[0] == "install_subtargets"
+    if scope.TEMPLATE == "lib":
+        assert targets_sorted[0] == "install_lib"
+    if scope.TEMPLATE == "app":
+        assert targets_sorted[0] == "install_app"
+
+    for install_target_name in targets_sorted[1:]:
+        target_name = install_target_name[8:]
+        target_config = scope.get(f'{target_name}.CONFIG')
+
+        indent = 0
+
+        dst = scope.get_string(f'{target_name}.path') # target dir
+
+        # TODO what comes first? copy files or run command?
+
+        cm_fh.write("\n")
+        cm_fh.write(f"# install_{target_name}\n")
+        depends_str = " ".join(scope.get(f'{target_name}.depends'))
+        if depends_str: # document dependencies as cmake comments
+            cm_fh.write(f"# depends on: {depends_str}\n")
+
+        # TODO use cmake variable for project_workdir?
+        project_workdir = os.path.dirname(scope._file_absolute_path)
+        dst_abs = os.path.join(project_workdir, dst) # target directory
+
+        target_str = scope._main_scope.TARGET
+        if target_name != "target":
+            target_str += f": {target_name}" # subtarget
+
+        done_copy_header = False
+
+        # copy files
+        for src in scope.get(f'{target_name}.files'):
+            #if "no_check_exist" in target_config:
+            # TODO what exactly does "no_check_exist" mean? ignore missing src?
+            # problem: cmake's file(COPY ...) has no option for this
+            # so we need "cmake -E copy ..." but that is not recursive
+            # f"execute_process(COMMAND ${{CMAKE_COMMAND}} -E copy {src} {dst}/\n')"
+
+            if not done_copy_header:
+                cm_fh.write(f'{spaces(indent)}install_target_files(TARGET {cmake_string(target_str)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}DESTINATION {cmake_string(dst_abs)}\n')
+                cm_fh.write(f'{spaces(indent + 1)}SOURCES\n')
+                done_copy_header = True
+
+            src_abs = os.path.join(project_workdir, src)
+            cm_fh.write(f'{spaces(indent + 1)}{cmake_string(src_abs)}\n')
+
+        if done_copy_header:
+            cm_fh.write(f')\n') # end of install_target_files
+
+        # run extra command
+        # FIXME parser bug: unquoted strings + braces = wrong whitespace
+        # https://bugreports.qt.io/browse/QTBUG-104195
+        # workaround: in the .pro file, use quoted string for command
+        # example:
+        # target.extra = "printf \"%q\n\" (hello world)"
+        cmd_str = scope.get_string(f'{target_name}.extra')
+        if cmd_str:
+            # convert variables from Makefile to cmake
+            # TODO better?
+            cmd_str = cmd_str.replace("$(INSTALL_ROOT)", "${CMAKE_INSTALL_PREFIX}")
+            cmd_str = cmd_str.replace("$(BUILD_ROOT)", "${CMAKE_BINARY_DIR}")
+            cmd_str = cmd_str.replace("$(SOURCE_ROOT)", "${CMAKE_SOURCE_DIR}")
+
+            cmd_str_esc = cmd_str.replace('"', '\\"')
+            cm_fh.write(f'{spaces(indent)}install_target_command(TARGET "{target_str}"\n')
+            #cm_fh.write(f'{spaces(indent + 1)}WORKING_DIRECTORY "{dst_abs}"\n')
+            cm_fh.write(f'{spaces(indent + 1)}COMMAND\n')
+            last_was_key = False
+            key_expr = re.compile(r"^--?[a-zA-Z0-9]")
+            for arg in shlex.split(cmd_str):
+                if last_was_key:
+                    if key_expr.match(arg): # next key
+                        cm_fh.write('\n')
+                        cm_fh.write(f'{spaces(indent + 1)}{cmake_string(arg)}')
+                        last_was_key = True
+                    else: # value
+                        cm_fh.write(f' {cmake_string(arg)}\n')
+                        last_was_key = False
+                    continue
+                cm_fh.write(f'{spaces(indent + 1)}{cmake_string(arg)}')
+                if key_expr.match(arg): # key
+                    last_was_key = True
+                else:
+                    cm_fh.write('\n')
+            if last_was_key:
+                cm_fh.write('\n')
+            cm_fh.write(f'{spaces(indent)})\n')
+
+
+_cmake_string_is_unsafe = re.compile(r'[^\w@%+=:,./-]', re.ASCII).search
+# note: [^...] = negated char class -> safe chars are \w@%+=:,./-
+
+#_cmake_string_replace = re.compile(r'([\\$"!])', re.ASCII).sub # TODO test e2e
+# dont escape $. example: ${CMAKE_INSTALL_PREFIX}
+# TODO? dont escape !
+_cmake_string_replace = re.compile(r'([\\"!])', re.ASCII).sub # TODO test e2e
+
+def cmake_string(s):
+    """
+    Return a cmake-escaped version of the string *s*.
+    Wrap string in double-quotes when necessary.
+    Based on shlex.quote (wrap string in single-quotes).
+    Cmake requires strings in double-quotes.
+    """
+    if not s:
+        return '""'
+    if _cmake_string_is_unsafe(s) is None:
+        return s
+    return '"' + _cmake_string_replace(r"\\\1", s) + '"'
+
+# test
+#assert cmake_string('a"b\\c$d$(e)!f\tg\nh\ri') == '"a\\"b\\\\c\\$d\\$(e)\\!f\tg\nh\ri"'
+
+
+# TODO remove? not used
+def cmake_bracket_string(fh: IO[str]):
+    "format string as cmake bracket argument"
+    # https://cmake.org/cmake/help/v3.23/manual/cmake-language.7.html#bracket-argument
+    bracket_content = fh.getvalue()
+    bracket_content = bracket_content.rstrip() # remove trailing \n
+    bracket_open = ""
+    bracket_close = ""
+    for i in range(0, 9999): # find shortest delimiter
+        bracket_open = "[" + "="*i + "["
+        bracket_close = "]" + "="*i + "]"
+        if bracket_close in bracket_content:
+            continue
+        if bracket_open in bracket_content: # optional condition
+            continue
+        break
+    return f"{bracket_open}\n{bracket_content}\n{bracket_close}"
 
 
 def write_deploy_app_commands(cm_fh: IO[str], scope: Scope):
@@ -4489,8 +4911,15 @@ def write_qml_module(
         qt_add_qml_module({target}
             URI {uri}
             VERSION {version}
-            """
+        """
     )
+
+    # function(qt6_add_qml_module
+    # https://code.qt.io/cgit/qt/qtdeclarative.git/tree/src/qml/Qt6QmlMacros.cmake#n13
+    content += "    # qml types are generated by cmake, but not by qmake\n"
+    content += "    # multiple qml types produce the runtime error\n"
+    content += '    # "Cannot add multiple registrations for x"\n'
+    content += "    NO_GENERATE_QMLTYPES\n"
 
     resource_files: Dict[str, str] = {}
     if resource is not None:
@@ -4976,6 +5405,8 @@ def generate_new_cmakelists(scope: Scope, *, debug: bool = False) -> None:
         print("Generating CMakeLists.gen.txt")
     with open(scope.generated_cmake_lists_path, "w") as cm_fh:
         assert scope.file
+        debug and print(f"generate_new_cmakelists: scope.file={scope.file}")
+        debug and print(f"generate_new_cmakelists: is_sub_project={is_marked_as_subdir(scope.file)}")
         cmakeify_scope(
             scope,
             cm_fh,
@@ -5007,7 +5438,8 @@ def do_include(scope: Scope, *, debug: bool = False) -> None:
         include_op = scope._get_operation_at_index("_INCLUDED", include_index)
         include_line_no = include_op._line_no
 
-        include_result, project_file_content = parseProFile(include_file, debug=debug)
+        include_result, project_file_content = parseProFile(include_file, debug=args.debug_parser)
+
         include_scope = Scope.FromDict(
             None,
             include_file,
@@ -5105,6 +5537,12 @@ def should_convert_project_after_parsing(
     return True
 
 
+def dump_file(file):
+    with open(file, "r") as fh:
+        for num, line in enumerate(fh, start=1):
+            print(f"{file}:{num} {line}", end="")
+
+
 def main(command_line_args: Optional[List[str]] = None) -> None:
     # Be sure of proper Python version
     assert sys.version_info >= (3, 7)
@@ -5121,10 +5559,12 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             "Please specify the minimum Qt version either with --min-qt-version or the environment variable QMAKE2CMAKE_MIN_QT_VERSION."
         )
 
+    if args.output_dir and args.output_file:
+        raise RuntimeError("Please set only one output option: --output-dir or --output-file.")
+
     if not isinstance(min_qt_version, version.Version):
         raise ValueError("Specified minimum Qt version is invalid.")
 
-    debug_parsing = args.debug_parser or args.debug
     if args.skip_condition_cache:
         set_condition_simplified_cache_enabled(False)
 
@@ -5133,6 +5573,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
     for file in args.files:
         new_current_dir = os.path.dirname(file)
         file_relative_path = os.path.basename(file)
+        # TODO avoid os.chdir -> fix os.path.isdir(sd) etc
         if new_current_dir:
             os.chdir(new_current_dir)
 
@@ -5141,7 +5582,11 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             print(f'Skipping conversion of project: "{project_file_absolute_path}"')
             continue
 
-        parseresult, project_file_content = parseProFile(file_relative_path, debug=debug_parsing)
+        if args.debug_dump_files or args.debug:
+            print(f"\nReading input file: {file}:")
+            dump_file(file)
+
+        parseresult, project_file_content = parseProFile(file_relative_path, debug=args.debug_parser)
 
         if args.debug_parse_result or args.debug:
             print("\n\n#### Parser result:")
@@ -5152,11 +5597,16 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             print(parseresult.asDict())
             print("\n#### End of parser result dictionary.\n")
 
+        input_dir = args.input_dir or os.path.dirname(file_relative_path)
+        debug and print(f"pro2cmake.py: args.input_dir = {args.input_dir}")
+        debug and print(f"pro2cmake.py: input_dir = {input_dir}")
+
         file_scope = Scope.FromDict(
             None,
             file_relative_path,
             parseresult.asDict().get("statements"),
             project_file_content=project_file_content,
+            input_dir=input_dir,
         )
 
         if args.debug_pro_structure or args.debug:
@@ -5164,7 +5614,7 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             file_scope.dump()
             print("\n#### End of .pro/.pri file structure.\n")
 
-        do_include(file_scope, debug=debug_parsing)
+        do_include(file_scope, debug=args.debug_parser)
 
         if args.debug_full_pro_structure or args.debug:
             print("\n\n#### Full .pro/.pri file structure:")
@@ -5182,9 +5632,19 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
 
         copy_generated_file = True
 
-        output_file = file_scope.original_cmake_lists_path
+        output_file = None
+        debug and print(f"main: file_scope.original_cmake_lists_path = {file_scope.original_cmake_lists_path}")
         if args.output_file:
             output_file = args.output_file
+            debug and print(f"main: output_file = args.output_file = {output_file}")
+        elif args.output_dir:
+            output_file = os.path.join(args.output_dir, file_scope.original_cmake_lists_path)
+            debug and print(f"main: output_file = args.output_dir + output_file = {output_file}")
+        else:
+            output_file = os.path.join(input_dir, file_scope.original_cmake_lists_path)
+            debug and print(f"main: output_file = input_dir + output_file = {output_file}")
+
+        print(f'Writing: {output_file}')
 
         if args.enable_special_case_preservation:
             debug_special_case = args.debug_special_case_preservation or args.debug
@@ -5202,6 +5662,11 @@ def main(command_line_args: Optional[List[str]] = None) -> None:
             copy_generated_file_to_final_location(
                 file_scope, output_file, keep_temporary_files=args.keep_temporary_files
             )
+
+        if args.debug_dump_files or args.debug:
+            print(f"\nWriting output file: {output_file}:")
+            dump_file(output_file)
+
         os.chdir(backup_current_dir)
 
 
