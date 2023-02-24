@@ -391,7 +391,7 @@ class QtResource:
         prefix: str = "",
         base_dir: str = "",
         files: Optional[Dict[str, str]] = None,
-        lang: str = None,
+        lang: Optional[str] = None,
         generated: bool = False,
         skip_qtquick_compiler: bool = False,
     ) -> None:
@@ -870,10 +870,7 @@ class SetOperation(Operation):
             else:
                 values += sinput
 
-        if transformer:
-            return list(transformer(values))
-        else:
-            return values
+        return list(transformer(values))
 
     def __repr__(self):
         return f"=({self._dump()})"
@@ -1792,7 +1789,9 @@ def handle_subdir(
         return sd
 
     # Collects assignment conditions into global sub_dirs dict.
-    def collect_subdir_info(sub_dir_assignment: str, *, current_conditions: FrozenSet[str] = None):
+    def collect_subdir_info(
+        sub_dir_assignment: str, *, current_conditions: Optional[FrozenSet[str]] = None
+    ):
         subtraction = sub_dir_assignment.startswith("-")
         if subtraction:
             subdir_name = sub_dir_assignment[1:]
@@ -2618,9 +2617,9 @@ def write_resources(
     target: str,
     scope: Scope,
     indent: int = 0,
-    target_ref: str = None,
-    resources: List[QtResource] = None,
-    skipped_standalone_files: List[str] = None,
+    target_ref: Optional[str] = None,
+    resources: Optional[List[QtResource]] = None,
+    skipped_standalone_files: Optional[List[str]] = None,
 ):
     if resources is None:
         (resources, skipped_standalone_files) = extract_resources(target, scope)
@@ -2772,7 +2771,7 @@ def expand_project_requirements(scope: Scope, skip_message: bool = False) -> str
 
 
 def write_extend_target(
-    cm_fh: IO[str], target: str, scope: Scope, indent: int = 0, target_ref: str = None
+    cm_fh: IO[str], target: str, scope: Scope, indent: int = 0, target_ref: Optional[str] = None
 ):
     if target_ref is None:
         target_ref = target
