@@ -3961,7 +3961,7 @@ def write_example_top_level_prelude(
     cm_fh.write(
         f"""\
 cmake_minimum_required(VERSION {cmake_version_string})
-project({project_name} VERSION {project_version} LANGUAGES CXX)
+project({project_name} VERSION {project_version} LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 """
