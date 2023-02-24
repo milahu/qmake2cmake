@@ -143,7 +143,6 @@ def print_stats(
     scan_time: float,
     script_time: float,
 ):
-
     if stats["total projects"]["value"] == 0:
         print("No .pro files found. Did you specify a correct source path?")
         return

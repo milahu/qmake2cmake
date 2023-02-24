@@ -929,7 +929,6 @@ class OperationLocation(object):
 
 
 class Scope(object):
-
     SCOPE_ID: int = 1
 
     def __init__(
@@ -1374,7 +1373,6 @@ class Scope(object):
     def _map_files(
         self, files: List[str], *, use_vpath: bool = True, is_include: bool = False
     ) -> List[str]:
-
         expanded_files = []  # type: List[str]
         for f in files:
             r = self._expand_value(f)
@@ -1766,7 +1764,6 @@ def handle_subdir(
     is_sub_project: bool = False,
     out_library_dependencies: Optional[LibraryDependencies] = None,
 ) -> None:
-
     # Library dependencies of the whole SUBDIRS hierarchy.
     in_recursion: bool = True
     if out_library_dependencies is None:
@@ -3501,7 +3498,6 @@ def write_3rdparty_library(cm_fh: IO[str], scope: Scope, *, indent: int = 0) -> 
 
 
 def write_generic_library(cm_fh: IO[str], scope: Scope, *, indent: int = 0) -> str:
-
     target_name = scope.TARGET
 
     library_type = ""
@@ -3864,7 +3860,6 @@ def write_top_level_find_package_section(
 
 
 def write_jar(cm_fh: IO[str], scope: Scope, *, indent: int = 0) -> str:
-
     target = scope.TARGET
 
     install_dir = scope.expandString("target.path")
@@ -4639,10 +4634,8 @@ def write_qml_plugin(
 def write_qml_plugin_epilogue(
     cm_fh: IO[str], target: str, scope: Scope, qmldir: QmlDir, indent: int = 0
 ):
-
     qml_files = scope.get_files("QML_FILES", use_vpath=True)
     if qml_files:
-
         indent_0 = spaces(indent)
         indent_1 = spaces(indent + 1)
         # Quote file paths in case there are spaces.
@@ -4794,7 +4787,6 @@ def find_top_level_repo_project_file(project_file_path: str = "") -> Optional[st
 
 
 def handle_top_level_repo_tests_project(scope: Scope, cm_fh: IO[str]):
-
     content = dedent(
         """\
         if(QT_BUILD_STANDALONE_TESTS)
