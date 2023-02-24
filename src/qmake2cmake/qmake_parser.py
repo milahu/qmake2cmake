@@ -117,7 +117,7 @@ class QmakeParser:
                 | pp.QuotedString(
                     quoteChar="$(", endQuoteChar=")", escQuote="\\", unquoteResults=False
                 )
-            ).setParseAction(lambda s, l, t: ["(", *t[0], ")"]),
+            ).setParseAction(lambda s, loc, t: ["(", *t[0], ")"]),
         )
 
         Substitution = add_element(
@@ -154,7 +154,7 @@ class QmakeParser:
                 pp.Suppress(pp.Literal("$") + pp.Literal("$"))
                 + Identifier
                 + pp.nestedExpr()  # .setParseAction(lambda s, l, t: ['(', *t[0], ')'])
-            ).setParseAction(lambda s, l, t: handle_function_value(*t)),
+            ).setParseAction(lambda s, loc, t: handle_function_value(*t)),
         )
         Value = add_element(
             "Value",
