@@ -62,7 +62,7 @@ instructions:
       equals_value: Windows
   - type: EnvironmentVariable
     variableName: CI_PYTHON_EXECUTABLE
-    variableValue: "python3.8"
+    variableValue: "python3.9"
     enable_if:
       condition: property
       property: host.os
