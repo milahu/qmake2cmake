@@ -24,22 +24,20 @@ The following QMake constructs are not converted:
 # Requirements
 
 * [Python 3.7](https://www.python.org/downloads/),
-* `pipenv` or `pip` to manage the modules.
+* `pip` to manage Python packages.
 
-## Python modules
+# Installation
 
-Since Python has many ways of handling projects, you have a couple of options to
-install the dependencies of the scripts:
+You can install the `qmake2cmake` package directly via `pip install
+qmake2cmake`.
 
-### Using `pipenv`
+In case you are developing a new feature or want to install the latest
+repository version, do an editable build by running `pip install -e .`
 
-The dependencies are specified on the `Pipfile`, so you just need to run
-`pipenv install` and that will automatically create a virtual environment
-that you can activate with a `pipenv shell`.
+# Installation for contributors
 
-### Using `pip`
-
-It's highly recommended to use a [virtual
+For developers who want to contribute to `qmake2cmake`, we recommend
+using a [virtual
 environment](https://docs.python.org/3/library/venv.html) to avoid
 conflicts with other packages that are already installed.
 
@@ -53,13 +51,6 @@ If the `pip install` command above doesn't work, try:
 ```
 python3.7 -m pip install -r requirements.txt
 ```
-
-# Installation
-
-You can install the package directly via `pip install qmake2cmake`.
-
-In case you are developing a new feature or want to install the latest
-repository version, do an editable build by running `pip install -e .`
 
 # Usage
 
