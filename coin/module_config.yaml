@@ -28,7 +28,7 @@ instructions:
         equals_value: Windows
     - type: PrependToEnvironmentVariable
       variableName: PATH
-      variableValue: "{{.BuildDir}}{{.Env.CI_PATH_SEP}}env{{.Env.CI_PATH_SEP}}Scripts;"
+      variableValue: '{{.AgentVariable "buildDir"}}{{.Env.CI_PATH_SEP}}env{{.Env.CI_PATH_SEP}}Scripts;'
       enable_if:
         condition: property
         property: host.os
